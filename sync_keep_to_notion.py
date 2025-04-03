@@ -10,8 +10,7 @@ NOTION_TOKEN = os.getenv("NOTION_TOKEN")
 NOTION_DATABASE_ID = os.getenv("NOTION_DATABASE_ID")
 KEEP_MOBILE = os.getenv("KEEP_MOBILE")
 KEEP_PASSWORD = os.getenv("KEEP_PASSWORD")
-WEATHERSTACK_API_KEY = os.getenv("WEATHERSTACK_API_KEY")  # 保留旧的 Weatherstack 密钥（如果需要）
-OPENWEATHER_API_KEY = "8912b8d2b4128888151bbfa3a084eef0"  # 你的新 OpenWeatherMap API 密钥
+QWEATHER_API_KEY = os.getenv("QWEATHER_API_KEY")  # 新的天气 API 密钥
 
 # 登录 Keep 获取 token
 login_res = requests.post("https://api.gotokeep.com/v1.1/users/login", json={
@@ -38,15 +37,15 @@ TYPE_EMOJI_MAP = {
 
 notion = Client(auth=NOTION_TOKEN)
 
-def get_weather(location):
-    weather_url = f"http://api.openweathermap.org/data/2.5/weather?q={location}&appid={OPENWEATHER_API_KEY}&units=metric&lang=zh_cn"
+def get_weather(location_code):
+    weather_url = f"https://api.qweather.com/v7/weather/now?location={location_code}&key={QWEATHER_API_KEY}"
     print(f"Weather API URL: {weather_url}")  # 调试 URL
     response = requests.get(weather_url)
     weather_data = response.json()
     print(f"Weather data: {weather_data}")  # 调试返回数据
-    if weather_data.get("cod") == 200:
-        temperature = weather_data["main"]["temp"]
-        description = weather_data["weather"][0]["description"]
+    if weather_data.get("code") == "200":
+        temperature = weather_data["now"]["temp"]
+        description = weather_data["now"]["text"]
         return f"{description} ~ {temperature}°C"
     else:
         return f"无法获取天气信息: {weather_data.get('message', '未知错误')}"
@@ -84,7 +83,9 @@ for group in data:
         if page_exists(done_date, workout_id):
             continue
 
-        weather_info = get_weather("Hengyang")
+        # 使用新的天气 API 获取天气信息
+        location_code = "101250404"  # 例如，使用 Qidong 城市的代码
+        weather_info = get_weather(location_code)
         title = f"{TYPE_EMOJI_MAP.get(sport_type, TYPE_EMOJI_MAP['default'])} {stats.get('name', '未命名')} {stats.get('nameSuffix', '')}"
         duration = stats.get("duration", 0)
         pace_seconds = int(duration / km) if km > 0 else 0
