@@ -1,8 +1,8 @@
-
 import os
 import requests
 from notion_client import Client
 from dotenv import load_dotenv
+from datetime import datetime
 
 # 加载环境变量
 load_dotenv()
@@ -25,7 +25,7 @@ res = requests.get("https://api.gotokeep.com/pd/v3/stats/detail", params={
 }, headers={"Authorization": f"Bearer {token}"})
 
 data = res.json().get("data", {}).get("records", [])
-print(f"👀 汇总所有类型后的记录条数： {len(data)}")
+print(f"👀 想提取的总条数: {len(data)}")
 
 # 设置 emoji 分类
 TYPE_EMOJI_MAP = {
@@ -60,35 +60,27 @@ for group in data:
     for item in logs:
         stats = item.get("stats")
         if not stats:
-            continue  # ⚠️ 跳过没有 stats 的记录
+            continue
 
         done_date = stats.get("doneDate", "")
         if not done_date.startswith("2025"):
             continue
 
-        # ✅ 以下逻辑保持不变
         sport_type = stats.get("type", "unknown")
         workout_id = stats.get("id", "")
         km = stats.get("kmDistance", 0.0)
 
-        print(f"📅 当前处理日期: {done_date}, 类型: {sport_type}, 距离: {km}")
+        print(f"🗕️ 处理日期: {done_date}, 类型: {sport_type}, 距离: {km}")
 
         if page_exists(done_date, workout_id):
             continue
-
-        # ...（创建 Notion 页面）
-
 
         # 生成标题
         title = f"{TYPE_EMOJI_MAP.get(sport_type, TYPE_EMOJI_MAP['default'])} {stats.get('name', '未命名')} {stats.get('nameSuffix', '')}"
 
         # 计算配速
         duration = stats.get("duration", 0)
-        km = stats.get("kmDistance", 0.0)
-        pace_text = "无"
-        if km > 0:
-            pace_sec = int(duration / km)
-            pace_text = f"{pace_sec // 60}:{pace_sec % 60:02d} 分/公里"
+        pace = round(duration / km, 2) if km else 0.0
 
         # 写入 Notion
         notion.pages.create(parent={"database_id": NOTION_DATABASE_ID}, properties={
@@ -98,7 +90,7 @@ for group in data:
             "距离": {"number": km},
             "卡路里": {"number": stats.get("calorie")},
             "类型": {"rich_text": [{"text": {"content": workout_id}}]},
-            "平均配速": {"number": pace_sec if km > 0 else 0},
+            "平均配速": {"number": pace},
             "平均心率": {
                 "number": stats.get("heartRate", {}).get("averageHeartRate", 0)
                 if isinstance(stats.get("heartRate"), dict) else 0
@@ -111,6 +103,4 @@ for group in data:
             }
         })
 
-print("✅ 已完成 Notion 同步")
-print(f"📅 当前处理日期: {done_date}, 类型: {sport_type}, 距离: {km}")
-
+print("✅ Notion 同步完成")
