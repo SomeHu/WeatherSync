@@ -1,13 +1,8 @@
-import requests
+# 导入所需的库
 import os
+import requests
+from notion_client import Client  # 添加这一行，导入 Client 类
 from dotenv import load_dotenv
-
-# 加载环境变量
-load_dotenv()
-
-# 打印 API 密钥，确保加载成功
-print(f"Loaded API Key: {os.getenv('QWEATHER_API_KEY')}")
-
 
 # 加载环境变量
 load_dotenv()
@@ -17,6 +12,9 @@ NOTION_DATABASE_ID = os.getenv("NOTION_DATABASE_ID")
 KEEP_MOBILE = os.getenv("KEEP_MOBILE")
 KEEP_PASSWORD = os.getenv("KEEP_PASSWORD")
 QWEATHER_API_KEY = os.getenv("QWEATHER_API_KEY")  # 新的天气 API 密钥
+
+# 初始化 Notion 客户端
+notion = Client(auth=NOTION_TOKEN)
 
 # 登录 Keep 获取 token
 login_res = requests.post("https://api.gotokeep.com/v1.1/users/login", json={
