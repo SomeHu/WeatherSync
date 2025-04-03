@@ -47,15 +47,8 @@ if isinstance(records, list) and all(isinstance(g, dict) for g in records):
         "时长": {"number": stats.get("duration")},
         "距离": {"number": stats.get("kmDistance")},
         "卡路里": {"number": stats.get("calorie")},
-        "类型": {  # 👈 就这段修正了
-            "rich_text": [
-                {
-                    "text": {
-                        "content": item.get("type", "unknown")
-                    }
-                }
-            ]
-        }
+        "类型": {"select": {"name": item.get("type", "unknown")}}
+
     }
 )
 
