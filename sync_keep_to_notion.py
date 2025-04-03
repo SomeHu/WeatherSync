@@ -44,15 +44,19 @@ notion = Client(auth=NOTION_TOKEN)
 def get_weather(location_code):
     weather_url = f"https://api.qweather.com/v7/weather/now?location={location_code}&key={QWEATHER_API_KEY}"
     print(f"Weather API URL: {weather_url}")  # 调试 URL
-    response = requests.get(weather_url)
-    weather_data = response.json()
-    print(f"Weather data: {weather_data}")  # 调试返回数据
-    if weather_data.get("code") == "200":
-        temperature = weather_data["now"]["temp"]
-        description = weather_data["now"]["text"]
-        return f"{description} ~ {temperature}°C"
-    else:
-        return f"无法获取天气信息: {weather_data.get('message', '未知错误')}"
+    try:
+        response = requests.get(weather_url)
+        response.raise_for_status()  # 如果状态码不是 200，会抛出异常
+        weather_data = response.json()
+        print(f"Weather data: {weather_data}")  # 调试返回数据
+        if weather_data.get("code") == "200":
+            temperature = weather_data["now"]["temp"]
+            description = weather_data["now"]["text"]
+            return f"{description} ~ {temperature}°C"
+        else:
+            return f"天气 API 返回错误: {weather_data.get('code')} - {weather_data.get('message', '未知错误')}"
+    except requests.exceptions.RequestException as e:
+        return f"天气请求失败: {str(e)}"
 
 
 
