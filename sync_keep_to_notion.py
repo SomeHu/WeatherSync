@@ -39,20 +39,20 @@ print(f"\U0001f440 汇总所有类型后的记录条数： {len(data)}")
 # 天气信息获取函数
 def get_weather(location_code):
     weather_url = f"https://api.qweather.com/v7/weather/now?location={location_code}&key={QWEATHER_API_KEY}"
-    print(f"Weather API URL: {weather_url}")
-    try:
-        response = requests.get(weather_url)
-        response.raise_for_status()
-        weather_data = response.json()
-        print(f"Weather data: {weather_data}")
-        if weather_data.get("code") == "200":
-            temperature = weather_data["now"]["temp"]
-            description = weather_data["now"]["text"]
-            return f"{description} ~ {temperature}°C"
-        else:
-            return f"天气 API 返回错误: {weather_data.get('code')} - {weather_data.get('message', '未知错误')}"
-    except requests.exceptions.RequestException as e:
-        return f"天气请求失败: {str(e)}"
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
+    }
+    print(f"Weather API URL: {weather_url}")  # 调试 URL
+    response = requests.get(weather_url, headers=headers)
+    weather_data = response.json()
+    print(f"Weather data: {weather_data}")  # 调试返回数据
+    if weather_data.get("code") == "200":
+        temperature = weather_data["now"]["temp"]
+        description = weather_data["now"]["text"]
+        return f"{description} ~ {temperature}°C"
+    else:
+        return f"天气请求失败: {weather_data.get('message', '未知错误')}"
+
 
 # 判断是否已经同步过此记录
 def page_exists(done_date, workout_id):
