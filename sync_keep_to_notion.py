@@ -22,8 +22,15 @@ token = login_res.json().get("data", {}).get("token")
 res = requests.get("https://api.gotokeep.com/pd/v3/stats/detail", params={
     "dateUnit": "all", "type": "running", "lastDate": 0
 }, headers={"Authorization": f"Bearer {token}"})
-data = res.json().get("data", [])
-print("👀 返回的 data 内容为：", data)
+try:
+    data_raw = res.json()
+    print("📦 Keep 原始返回内容：", data_raw)
+    data = data_raw.get("data", [])
+    print("👀 提取后的 data 内容：", data)
+except Exception as e:
+    print("❌ 解析 JSON 出错：", e)
+    data = []
+
 # 初始化 Notion 客户端
 notion = Client(auth=NOTION_TOKEN)
 print("👀 返回的 data 内容为：", data)
