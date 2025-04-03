@@ -2,12 +2,13 @@ name: Keep to Notion Sync
 
 on:
   schedule:
-    - cron: "0 1 * * *" # 每天凌晨 1 点自动同步
-  workflow_dispatch: # 支持手动触发
+    - cron: "0 1 * * *"  # 每天凌晨 1 点自动同步（UTC 时间 -> 北京时间早上 9 点）
+  workflow_dispatch:      # 支持手动触发
 
 jobs:
   sync:
     runs-on: ubuntu-latest
+
     steps:
       - name: Checkout repo
         uses: actions/checkout@v3
@@ -22,11 +23,12 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      - name: Run keep to notion script
-        env:
-          NOTION_TOKEN: ${{ secrets.NOTION_TOKEN }}
-          NOTION_DATABASE_ID: ${{ secrets.NOTION_DATABASE_ID }}
-          KEEP_MOBILE: ${{ secrets.KEEP_MOBILE }}
-          KEEP_PASSWORD: ${{ secrets.KEEP_PASSWORD }}
+      - name: ✅ 创建 .env 文件
         run: |
-          python sync_keep_to_notion.py
+          echo "NOTION_TOKEN=${{ secrets.NOTION_TOKEN }}" >> .env
+          echo "NOTION_DATABASE_ID=${{ secrets.NOTION_DATABASE_ID }}" >> .env
+          echo "KEEP_MOBILE=${{ secrets.KEEP_MOBILE }}" >> .env
+          echo "KEEP_PASSWORD=${{ secrets.KEEP_PASSWORD }}" >> .env
+
+      - name: Run keep to notion script
+        run: python sync_keep_to_notion.py
