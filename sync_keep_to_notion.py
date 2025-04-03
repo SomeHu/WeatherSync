@@ -107,7 +107,7 @@ for group in data:
             continue
 
         # 获取天气
-        weather_info = get_weather("衡阳")
+        weather_info = get_weather("Hengyang")
 
         # 生成标题
         title = f"{TYPE_EMOJI_MAP.get(sport_type, TYPE_EMOJI_MAP['default'])} {stats.get('name', '未命名')} {stats.get('nameSuffix', '')}"
