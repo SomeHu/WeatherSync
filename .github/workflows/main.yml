@@ -16,12 +16,12 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v4
         with:
-          python-version: "3.9"
+          python-version: '3.10'
 
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install -r requirements.txt
+          pip install requests python-dotenv notion-client  # 安装依赖
 
       - name: Run keep to notion script
         env:
@@ -29,6 +29,6 @@ jobs:
           NOTION_DATABASE_ID: ${{ secrets.NOTION_DATABASE_ID }}
           KEEP_MOBILE: ${{ secrets.KEEP_MOBILE }}
           KEEP_PASSWORD: ${{ secrets.KEEP_PASSWORD }}
-          QWEATHER_API_KEY: ${{ secrets.QWEATHER_API_KEY }}  # ✅ 添加这一行！
+          QWEATHER_API_KEY: ${{ secrets.QWEATHER_API_KEY }}  # 添加天气 API 密钥
         run: |
           python sync_keep_to_notion.py
