@@ -42,8 +42,25 @@ notion = Client(auth=NOTION_TOKEN)
 
 # 获取天气信息函数
 def get_weather(location):
-    # 删除 get_location_name 相关代码，直接查询天气
-    weather_url = f"http://api.weatherstack.com/current?access_key={WEATHERSTACK_API_KEY}&query={location}&units=m&language=zh"
+    location_name = get_location_name(location)
+    print(f"Location resolved: {location_name}")  # Debug: Check resolved location name
+
+    if location_name != "未找到城市信息":
+        weather_url = f"http://api.weatherstack.com/current?access_key={WEATHERSTACK_API_KEY}&query={location_name}&units=m&language=zh"
+        response = requests.get(weather_url)
+        weather_data = response.json()
+
+        print(f"Weather data: {weather_data}")  # Debug: Check the response from weather API
+
+        if "current" in weather_data:
+            temperature = weather_data["current"].get("temperature", "未知")
+            weather_description = weather_data["current"].get("weather_descriptions", ["未知"])[0]
+            return f"{weather_description} ~ {temperature}°C"
+        else:
+            return "无法获取天气信息"
+    else:
+        return "无法获取城市数据"
+
 
 # 查询城市名称（用来标准化城市名称）
 def get_location_name(city_name):
