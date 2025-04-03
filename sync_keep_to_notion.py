@@ -1,5 +1,6 @@
 import os
 import requests
+import datetime
 from notion_client import Client
 from dotenv import load_dotenv
 
@@ -10,10 +11,19 @@ NOTION_TOKEN = os.getenv("NOTION_TOKEN")
 NOTION_DATABASE_ID = os.getenv("NOTION_DATABASE_ID")
 KEEP_MOBILE = os.getenv("KEEP_MOBILE")
 KEEP_PASSWORD = os.getenv("KEEP_PASSWORD")
-WEATHER_API_KEY = os.getenv("WEATHER_API_KEY")  # 新增天气 API KEY
+WEATHER_API_KEY = os.getenv("WEATHER_API_KEY")  # 新增天气 KEY
 
-# 初始化 Notion 客户端
+# Notion 初始化
 notion = Client(auth=NOTION_TOKEN)
+
+# Emoji 分类
+TYPE_EMOJI_MAP = {
+    "running": "🏃‍♂️",
+    "walking": "🚶",
+    "cycling": "🚴",
+    "swimming": "🏊",
+    "default": "🏋️"
+}
 
 # 登录 Keep 获取 token
 login_res = requests.post("https://api.gotokeep.com/v1.1/users/login", json={
@@ -26,30 +36,11 @@ token = login_res.json().get("data", {}).get("token")
 res = requests.get("https://api.gotokeep.com/pd/v3/stats/detail", params={
     "dateUnit": "all", "type": "", "lastDate": 0
 }, headers={"Authorization": f"Bearer {token}"})
+
 data = res.json().get("data", {}).get("records", [])
 print(f"👀 汇总所有类型后的记录条数： {len(data)}")
 
-# 设置 emoji 分类
-TYPE_EMOJI_MAP = {
-    "running": "🏃‍♂️",
-    "walking": "🚶",
-    "cycling": "🚴",
-    "swimming": "🏊",
-    "default": "🏋️"
-}
-
-# 查询天气函数（模拟城市：上海）
-def query_weather(date_str):
-    try:
-        date = date_str.split("T")[0]
-        url = f"https://devapi.qweather.com/v7/historical/weather?location=101020100&date={date}&key={WEATHER_API_KEY}"
-        r = requests.get(url)
-        d = r.json().get("weatherDaily", [{}])[0]
-        return f"{d.get('textDay', '未知')} {d.get('tempMin', '')}~{d.get('tempMax', '')}°C"
-    except:
-        return "未知"
-
-# 去重辅助函数
+# 查询 Notion 中是否已存在
 def page_exists(done_date, workout_id):
     query = notion.databases.query(
         **{
@@ -64,7 +55,18 @@ def page_exists(done_date, workout_id):
     )
     return len(query.get("results", [])) > 0
 
-# 开始处理每条记录
+# 获取天气信息（城市写死为上海，可按需更改）
+def get_weather(date_str):
+    try:
+        url = f"https://api.qweather.com/v7/historical/weather?location=101250401&date={date_str}&key={9b67809cf3134494a4db4697b8f0d957}"
+        resp = requests.get(url)
+        w = resp.json()
+        temp = w.get("weatherDaily", [{}])[0]
+        return f"{temp.get('textDay', '未知')} {temp.get('tempMin', '')}~{temp.get('tempMax', '')}°C"
+    except Exception:
+        return "未知 ~°C"
+
+# 遍历并写入
 for group in data:
     logs = group.get("logs", [])
     for item in logs:
@@ -79,26 +81,26 @@ for group in data:
         sport_type = stats.get("type", "unknown")
         workout_id = stats.get("id", "")
         km = stats.get("kmDistance", 0.0)
-
-        print(f"📅 当前处理日期: {done_date}, 类型: {sport_type}, 距离: {km}")
+        duration = stats.get("duration", 0)
 
         if page_exists(done_date, workout_id):
             continue
 
-        title = f"{TYPE_EMOJI_MAP.get(sport_type, TYPE_EMOJI_MAP['default'])} {stats.get('name', '未命名')} {stats.get('nameSuffix', '')}"
-
-        duration = stats.get("duration", 0)
+        # 配速
         pace_seconds = int(duration / km) if km > 0 else 0
-
+        # 心率
         hr = stats.get("heartRate")
         avg_hr = hr.get("averageHeartRate", 0) if isinstance(hr, dict) else 0
-
+        # 设备
         vendor = stats.get("vendor", {})
         source = vendor.get("source", "Keep")
         device = vendor.get("deviceModel", "")
         vendor_display = f"{source} {device}".strip()
+        # 天气
+        date_only = done_date[:10]
+        weather_text = get_weather(date_only)
 
-        weather = query_weather(done_date)
+        title = f"{TYPE_EMOJI_MAP.get(sport_type, TYPE_EMOJI_MAP['default'])} {stats.get('name', '未命名')} {stats.get('nameSuffix', '')}"
 
         notion.pages.create(parent={"database_id": NOTION_DATABASE_ID}, properties={
             "名称": {"title": [{"text": {"content": title}}]},
@@ -109,8 +111,8 @@ for group in data:
             "类型": {"rich_text": [{"text": {"content": workout_id}}]},
             "平均配速": {"number": pace_seconds},
             "平均心率": {"number": avg_hr},
+            "天气": {"rich_text": [{"text": {"content": weather_text}}]},
             "数据来源": {"rich_text": [{"text": {"content": vendor_display}}]},
-            "天气": {"rich_text": [{"text": {"content": weather}}]},
             "轨迹图": {
                 "files": [{
                     "name": "track.jpg",
