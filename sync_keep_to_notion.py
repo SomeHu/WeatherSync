@@ -114,23 +114,24 @@ for group in data:
         vendor_display = f"{source} {device}".strip()
 
         # 写入 Notion
-        notion.pages.create(parent={"database_id": NOTION_DATABASE_ID}, properties={
-            "名称": {"title": [{"text": {"content": title}}]},
-            "日期": {"date": {"start": done_date}},
-            "时长": {"number": duration},
-            "距离": {"number": km},
-            "卡路里": {"number": stats.get("calorie")},
-            "类型": {"rich_text": [{"text": {"content": workout_id}}]},
-            "平均配速": {"number": pace_seconds},
-            "平均心率": {"number": avg_hr},
-            "天气": {"rich_text": [{"text": {"content": weather_info}}]},
-            "轨迹图": {
-                "files": [{
-                    "name": "track.jpg",
-                    "external": {"url": stats.get("trackWaterMark", "")}
-                }] if stats.get("trackWaterMark") else []
-            },
-            "数据来源": {"rich_text": [{"text": {"content": vendor_display}}]}
-        })
-
+notion.pages.create(parent={"database_id": NOTION_DATABASE_ID}, properties={
+    "名称": {"title": [{"text": {"content": title}}]},
+    "日期": {"date": {"start": done_date}},
+    "时长": {"number": duration},
+    "距离": {"number": km},
+    "卡路里": {"number": stats.get("calorie")},
+    "类型": {"rich_text": [{"text": {"content": workout_id}}]},
+    "平均配速": {"number": pace_seconds},
+    "平均心率": {"number": avg_hr},
+    "天气": {
+        "rich_text": [{"text": {"content": weather_info}}] if weather_info else []  # 只在有天气信息时写入
+    },
+    "轨迹图": {
+        "files": [{
+            "name": "track.jpg",
+            "external": {"url": stats.get("trackWaterMark", "")}
+        }] if stats.get("trackWaterMark") else []
+    },
+    "数据来源": {"rich_text": [{"text": {"content": vendor_display}}]}
+})
 print("\u2705 已完成 Notion 同步")
