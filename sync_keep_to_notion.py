@@ -22,9 +22,7 @@ token = login_res.json().get("data", {}).get("token")
 
 # 请求 Keep 运动数据
 res = requests.get("https://api.gotokeep.com/pd/v3/stats/detail", params={
-    "dateUnit": "day",  # 同步当天的数据
-    "type": "",  # 不指定类型，获取所有类型的数据
-    "lastDate": 0
+    "dateUnit": "all", "type": "", "lastDate": 0
 }, headers={"Authorization": f"Bearer {token}"})
 
 data = res.json().get("data", {}).get("records", [])
@@ -82,7 +80,9 @@ for group in data:
             continue  # ⚠️ 跳过没有 stats 的记录
 
         done_date = stats.get("doneDate", "")
-        if done_date != today:  # 只同步当天的数据
+        
+        # 处理过去的数据：如果没有新的数据，也能同步以前的记录
+        if not done_date.startswith(str(datetime.datetime.utcnow().year)):  # 不仅同步当天
             continue
 
         sport_type = stats.get("type", "unknown")
