@@ -1,7 +1,12 @@
 import os
-import requests
-from notion_client import Client
 from dotenv import load_dotenv
+
+# 加载环境变量
+load_dotenv()
+
+# 打印 API 密钥，确保加载成功
+print(f"Loaded API Key: {os.getenv('QWEATHER_API_KEY')}")
+
 
 # 加载环境变量
 load_dotenv()
@@ -40,7 +45,6 @@ notion = Client(auth=NOTION_TOKEN)
 def get_weather(location_code):
     weather_url = f"https://api.qweather.com/v7/weather/now?location={location_code}&key={QWEATHER_API_KEY}"
     print(f"Weather API URL: {weather_url}")  # 调试 URL
-    print(f"Using API Key: {QWEATHER_API_KEY}")  # 打印 API 密钥确认
     response = requests.get(weather_url)
     weather_data = response.json()
     print(f"Weather data: {weather_data}")  # 调试返回数据
@@ -50,6 +54,7 @@ def get_weather(location_code):
         return f"{description} ~ {temperature}°C"
     else:
         return f"无法获取天气信息: {weather_data.get('message', '未知错误')}"
+
 
 
 def page_exists(done_date, workout_id):
