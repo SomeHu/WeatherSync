@@ -43,17 +43,25 @@ notion = Client(auth=NOTION_TOKEN)
 # 获取天气信息
 # 获取天气信息
 def get_weather(location):
-    weather_url = f"http://api.weatherstack.com/current?access_key={WEATHERSTACK_API_KEY}&query={location}&language=zh"
-    response = requests.get(weather_url)
-    weather_data = response.json()
+    # 获取标准城市名称
+    location_name = get_location_name(location)
 
-    # 检查 API 返回的数据是否有效
-    if "current" in weather_data:
-        temperature = weather_data["current"].get("temperature", "未知")
-        weather_description = weather_data["current"].get("weather_descriptions", ["未知"])[0]
-        return f"{weather_description} ~ {temperature}°C"
+    # 如果获取到正确的城市名称，再请求天气数据
+    if location_name != "未找到城市信息":
+        weather_url = f"http://api.weatherstack.com/current?access_key={WEATHERSTACK_API_KEY}&query={location_name}&language=zh"
+        response = requests.get(weather_url)
+        weather_data = response.json()
+
+        # 检查 API 返回的数据是否有效
+        if "current" in weather_data:
+            temperature = weather_data["current"].get("temperature", "未知")
+            weather_description = weather_data["current"].get("weather_descriptions", ["未知"])[0]
+            return f"{weather_description} ~ {temperature}°C"
+        else:
+            return "无法获取天气信息"
     else:
-        return "无法获取天气信息"
+        return "无法获取城市数据"
+
 
 
 # 去重辅助函数
@@ -110,7 +118,7 @@ for group in data:
         vendor_display = f"{source} {device}".strip()
 
         # 获取天气信息（使用城市名称）
-        weather_info = get_weather("衡阳市祁东县")
+        weather_info = get_weather("衡阳")
 
         # 写入 Notion
         notion.pages.create(parent={"database_id": NOTION_DATABASE_ID}, properties={
