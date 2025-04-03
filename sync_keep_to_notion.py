@@ -26,15 +26,14 @@ res = requests.get("https://api.gotokeep.com/pd/v3/stats/detail", params={
 data_raw = res.json()
 print("📦 Keep 原始返回内容：", data_raw)
 
-# ✅ 正确提取 records 列表
-data = data_raw.get("data", {}).get("records", [])
-print("👀 提取后的 data 内容：", data)
-
+# 提取 records
+records = data_raw.get("data", {}).get("records", [])
+print("👀 提取后的 records 内容：", records)
 
 # 初始化 Notion 客户端
 notion = Client(auth=NOTION_TOKEN)
 
-# 将数据写入 Notion
+# 开始写入
 if isinstance(records, list) and all(isinstance(g, dict) for g in records):
     for group in records:
         logs = group.get("logs", [])
@@ -48,9 +47,10 @@ if isinstance(records, list) and all(isinstance(g, dict) for g in records):
                     "时长": {"number": stats.get("duration")},
                     "距离": {"number": stats.get("kmDistance")},
                     "卡路里": {"number": stats.get("calorie")},
-                    "类型": {"rich_text": [{"text": {"content": item.get("type", "unknown")}}]}
+                    "类型": {"select": {"name": item.get("type", "unknown")}}
                 }
             )
     print("✅ Keep 运动数据同步完成！")
 else:
     print("❌ 警告：Keep 返回的数据格式不符合预期，可能登录失败或未获取到数据。")
+
