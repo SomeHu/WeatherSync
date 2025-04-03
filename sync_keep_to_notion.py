@@ -11,7 +11,7 @@ NOTION_TOKEN = os.getenv("NOTION_TOKEN")
 NOTION_DATABASE_ID = os.getenv("NOTION_DATABASE_ID")
 KEEP_MOBILE = os.getenv("KEEP_MOBILE")
 KEEP_PASSWORD = os.getenv("KEEP_PASSWORD")
-WEATHERSTACK_API_KEY = os.getenv("WEATHERSTACK_API_KEY")
+WEATHERSTACK_API_KEY = "314ea3ee630aca1db8880aee4d48dc62"  # 你提供的 API 密钥
 
 # 登录 Keep 获取 token
 login_res = requests.post("https://api.gotokeep.com/v1.1/users/login", json={
@@ -45,13 +45,14 @@ def get_weather(location):
     weather_url = f"http://api.weatherstack.com/current?access_key={WEATHERSTACK_API_KEY}&query={location}"
     response = requests.get(weather_url)
     weather_data = response.json()
-    
+
+    # 检查 API 返回的数据是否有效
     if "current" in weather_data:
-        temperature = weather_data["current"]["temperature"]
-        weather_description = weather_data["current"]["weather_descriptions"][0]
+        temperature = weather_data["current"].get("temperature", "未知")
+        weather_description = weather_data["current"].get("weather_descriptions", ["未知"])[0]
         return f"{weather_description} ~ {temperature}°C"
     else:
-        return "未知 ~ °C"
+        return "无法获取天气信息"
 
 # 去重辅助函数
 def page_exists(done_date, workout_id):
@@ -68,9 +69,6 @@ def page_exists(done_date, workout_id):
     )
     return len(query.get("results", [])) > 0
 
-# 获取当前日期
-today = datetime.datetime.utcnow().strftime('%Y-%m-%d')  # 获取当前 UTC 日期，转换为 yyyy-mm-dd 格式
-
 # 开始处理每条记录
 for group in data:
     logs = group.get("logs", [])
@@ -80,9 +78,7 @@ for group in data:
             continue  # ⚠️ 跳过没有 stats 的记录
 
         done_date = stats.get("doneDate", "")
-        
-        # 处理过去的数据：如果没有新的数据，也能同步以前的记录
-        if not done_date.startswith(str(datetime.datetime.utcnow().year)):  # 不仅同步当天
+        if not done_date.startswith("2025"):
             continue
 
         sport_type = stats.get("type", "unknown")
@@ -93,10 +89,6 @@ for group in data:
 
         if page_exists(done_date, workout_id):
             continue
-
-        # 获取天气
-        location = "Hengyang"  # 可以改成动态获取城市名
-        weather_info = get_weather(location)
 
         # 生成标题
         title = f"{TYPE_EMOJI_MAP.get(sport_type, TYPE_EMOJI_MAP['default'])} {stats.get('name', '未命名')} {stats.get('nameSuffix', '')}"
@@ -115,6 +107,9 @@ for group in data:
         device = vendor.get("deviceModel", "")
         vendor_display = f"{source} {device}".strip()
 
+        # 获取天气信息（使用城市名称）
+        weather_info = get_weather("衡阳市祁东县")
+
         # 写入 Notion
         notion.pages.create(parent={"database_id": NOTION_DATABASE_ID}, properties={
             "名称": {"title": [{"text": {"content": title}}]},
@@ -125,14 +120,14 @@ for group in data:
             "类型": {"rich_text": [{"text": {"content": workout_id}}]},
             "平均配速": {"number": pace_seconds},
             "平均心率": {"number": avg_hr},
-            "天气": {"rich_text": [{"text": {"content": weather_info}}]},  # 添加天气
             "轨迹图": {
                 "files": [{
                     "name": "track.jpg",
                     "external": {"url": stats.get("trackWaterMark", "")}
                 }] if stats.get("trackWaterMark") else []
             },
-            "数据来源": {"rich_text": [{"text": {"content": vendor_display}}]}
+            "数据来源": {"rich_text": [{"text": {"content": vendor_display}}]},
+            "天气": {"rich_text": [{"text": {"content": weather_info}}]}  # 添加天气字段
         })
 
 print("\u2705 已完成 Notion 同步")
