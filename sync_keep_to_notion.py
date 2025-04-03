@@ -26,21 +26,25 @@ data = res.json().get("data", [])
 
 # 初始化 Notion 客户端
 notion = Client(auth=NOTION_TOKEN)
+print("👀 返回的 data 内容为：", data)
 
 # 将数据写入 Notion
-for group in data:
-    logs = group.get("logs", [])
-    for item in logs:
-        stats = item.get("stats", {})
-        notion.pages.create(
-            parent={"database_id": NOTION_DATABASE_ID},
-            properties={
-                "名称": {"title": [{"text": {"content": stats.get("display", "未命名运动")}}]},
-                "日期": {"date": {"start": stats.get("doneDate")}},
-                "时长": {"number": stats.get("duration")},
-                "距离": {"number": stats.get("kmDistance")},
-                "卡路里": {"number": stats.get("calorie")},
-                "类型": {"rich_text": [{"text": {"content": item.get("type", "unknown")}}]}
-            }
-        )
-print("✅ Keep 运动数据同步完成！")
+if isinstance(data, list) and all(isinstance(g, dict) for g in data):
+    for group in data:
+        logs = group.get("logs", [])
+        for item in logs:
+            stats = item.get("stats", {})
+            notion.pages.create(
+                parent={"database_id": NOTION_DATABASE_ID},
+                properties={
+                    "名称": {"title": [{"text": {"content": stats.get("display", "未命名运动")}}]},
+                    "日期": {"date": {"start": stats.get("doneDate")}},
+                    "时长": {"number": stats.get("duration")},
+                    "距离": {"number": stats.get("kmDistance")},
+                    "卡路里": {"number": stats.get("calorie")},
+                    "类型": {"rich_text": [{"text": {"content": item.get("type", "unknown")}}]}
+                }
+            )
+    print("✅ Keep 运动数据同步完成！")
+else:
+    print("❌ 警告：Keep 返回的数据格式不符合预期，可能登录失败或未获取到数据。")
