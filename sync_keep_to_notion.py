@@ -32,8 +32,8 @@ print("📦 提取后的 records 内容：", records)
 notion = Client(auth=NOTION_TOKEN)
 
 # 将数据写入 Notion
-if isinstance(data, list) and all(isinstance(g, dict) for g in data):
-    for group in data:
+if isinstance(records, list) and all(isinstance(g, dict) for g in records):
+    for group in records:
         logs = group.get("logs", [])
         for item in logs:
             stats = item.get("stats", {})
