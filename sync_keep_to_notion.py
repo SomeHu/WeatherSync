@@ -101,3 +101,5 @@ for group in data:
         })
 
 print("✅ 已完成 Notion 同步")
+print(f"📅 当前处理日期: {done_date}, 类型: {sport_type}, 距离: {km}")
+
