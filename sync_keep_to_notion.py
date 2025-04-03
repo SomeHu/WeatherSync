@@ -41,8 +41,9 @@ TYPE_EMOJI_MAP = {
 notion = Client(auth=NOTION_TOKEN)
 
 # 获取天气信息
+# 获取天气信息
 def get_weather(location):
-    weather_url = f"http://api.weatherstack.com/current?access_key={WEATHERSTACK_API_KEY}&query={location}"
+    weather_url = f"http://api.weatherstack.com/current?access_key={WEATHERSTACK_API_KEY}&query={location}&language=zh"
     response = requests.get(weather_url)
     weather_data = response.json()
 
@@ -53,6 +54,7 @@ def get_weather(location):
         return f"{weather_description} ~ {temperature}°C"
     else:
         return "无法获取天气信息"
+
 
 # 去重辅助函数
 def page_exists(done_date, workout_id):
