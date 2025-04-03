@@ -40,16 +40,25 @@ if isinstance(records, list) and all(isinstance(g, dict) for g in records):
         for item in logs:
             stats = item.get("stats", {})
             notion.pages.create(
-                parent={"database_id": NOTION_DATABASE_ID},
-                properties={
-                    "名称": {"title": [{"text": {"content": stats.get("display", "未命名运动")}}]},
-                    "日期": {"date": {"start": stats.get("doneDate")}},
-                    "时长": {"number": stats.get("duration")},
-                    "距离": {"number": stats.get("kmDistance")},
-                    "卡路里": {"number": stats.get("calorie")},
-                    "类型": {"select": {"name": item.get("type", "unknown")}}
+    parent={"database_id": NOTION_DATABASE_ID},
+    properties={
+        "名称": {"title": [{"text": {"content": stats.get("display", "未命名运动")}}]},
+        "日期": {"date": {"start": stats.get("doneDate")}},
+        "时长": {"number": stats.get("duration")},
+        "距离": {"number": stats.get("kmDistance")},
+        "卡路里": {"number": stats.get("calorie")},
+        "类型": {  # 👈 就这段修正了
+            "rich_text": [
+                {
+                    "text": {
+                        "content": item.get("type", "unknown")
+                    }
                 }
-            )
+            ]
+        }
+    }
+)
+
     print("✅ Keep 运动数据同步完成！")
 else:
     print("❌ 警告：Keep 返回的数据格式不符合预期，可能登录失败或未获取到数据。")
