@@ -1,5 +1,4 @@
 
-code = '''
 import os
 import requests
 from notion_client import Client
@@ -22,9 +21,10 @@ token = login_res.json().get("data", {}).get("token")
 
 # 获取运动数据（所有类型）
 res = requests.get("https://api.gotokeep.com/pd/v3/stats/detail", params={
-    "dateUnit": "all", "type": "all", "lastDate": 0
+    "dateUnit": "all",
+    "type": "all",
+    "lastDate": 0
 }, headers={"Authorization": f"Bearer {token}"})
-
 
 try:
     data_raw = res.json()
@@ -88,4 +88,3 @@ for group in records:
             print(f"❌ 写入 Notion 失败：{e}")
 
 print("✅ Keep 数据同步完成")
-'''
