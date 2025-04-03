@@ -126,5 +126,7 @@ for group in data:
             print(f"\u2705 已同步: {done_date} - {title}")
         except Exception as e:
             print(f"\U0001f6ab 同步失败: {done_date} - {title}, 错误: {str(e)}")
-
+print(f"NOTION_TOKEN: {NOTION_TOKEN}")
+print(f"QWEATHER_API_KEY: {QWEATHER_API_KEY}")
+print(f"Location Code: {location_code}")
 print("\u2705 已完成所有 Notion 同步")
