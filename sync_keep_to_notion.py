@@ -2,14 +2,25 @@ import os
 import requests
 from notion_client import Client
 from dotenv import load_dotenv
+from datetime import datetime
 
-# 读取 .env 环境变量
+# 加载 .env 配置
 load_dotenv()
 
 NOTION_TOKEN = os.getenv("NOTION_TOKEN")
 NOTION_DATABASE_ID = os.getenv("NOTION_DATABASE_ID")
 KEEP_MOBILE = os.getenv("KEEP_MOBILE")
 KEEP_PASSWORD = os.getenv("KEEP_PASSWORD")
+
+# emoji & 类型映射
+TYPE_EMOJI_MAP = {
+    "running": "🏃‍♂️",
+    "walking": "🚶‍♀️",
+    "cycling": "🚴",
+    "ropeSkipping": "🤾",
+    "workout": "🏋️",
+    "default": "🏃"
+}
 
 # 登录 Keep 获取 token
 login_res = requests.post("https://api.gotokeep.com/v1.1/users/login", json={
@@ -18,44 +29,59 @@ login_res = requests.post("https://api.gotokeep.com/v1.1/users/login", json={
 })
 token = login_res.json().get("data", {}).get("token")
 
-# 请求返回数据
-res = requests.get("https://api.gotokeep.com/pd/v3/stats/detail", params={
-    "dateUnit": "all", "type": "running", "lastDate": 0
-}, headers={"Authorization": f"Bearer {token}"})
+# 拉取多个类型的运动数据
+SUPPORTED_TYPES = ["running", "walking", "cycling", "ropeSkipping", "workout"]
+all_records = []
 
-try:
-    data_raw = res.json()
-    records = data_raw.get("data", {}).get("records", [])
-    print("👀 提取后的 records 内容：", records)
-except Exception as e:
-    print("❌ 解析 JSON 失败：", e)
-    records = []
+for sport_type in SUPPORTED_TYPES:
+    print(f"📥 正在拉取类型：{sport_type}")
+    res = requests.get("https://api.gotokeep.com/pd/v3/stats/detail", params={
+        "dateUnit": "all", "type": sport_type, "lastDate": 0
+    }, headers={"Authorization": f"Bearer {token}"})
+    if res.ok:
+        records = res.json().get("data", {}).get("records", [])
+        for record in records:
+            for log in record.get("logs", []):
+                log["sport_type"] = sport_type
+        all_records.extend(records)
+    else:
+        print(f"❌ 拉取 {sport_type} 数据失败：", res.text)
 
-# Notion 初始化
+# 初始化 Notion 客户端
 notion = Client(auth=NOTION_TOKEN)
+print("👀 汇总所有类型后的记录条数：", len(all_records))
 
-# 开始各条记录的转换和导入
-for group in records:
+# 写入 Notion
+existing_titles = set()
+
+for group in all_records:
     logs = group.get("logs", [])
     for item in logs:
         stats = item.get("stats", {})
-        heart_rate_info = stats.get("heartRate") or {}
-        vendor_info = stats.get("vendor") or {}
+        sport_type = item.get("sport_type", "default")
+        title = f"{TYPE_EMOJI_MAP.get(sport_type, TYPE_EMOJI_MAP['default'])} {stats.get('name', '未命名')} {stats.get('nameSuffix', '')}"
 
-        notion.pages.create(
-            parent={"database_id": NOTION_DATABASE_ID},
-            properties={
-                "名称": {"title": [{"text": {"content": stats.get("name", "未命名运动")}}]},
-                "日期": {"date": {"start": stats.get("doneDate")}},
-                "时长": {"number": stats.get("duration", 0)},
-                "距离": {"number": stats.get("kmDistance", 0)},
-                "卡路里": {"number": stats.get("calorie", 0)},
-                "类型": {"rich_text": [{"text": {"content": item.get("type", "unknown")}}]},
-                "来源": {"rich_text": [{"text": {"content": vendor_info.get("deviceModel", vendor_info.get("source", "Keep"))}}]},
-                "平均心率": {"number": heart_rate_info.get("averageHeartRate", 0)},
-                "最大心率": {"number": heart_rate_info.get("maxHeartRate", 0)},
-                "平均配速": {"number": stats.get("averagePace", 0)}
-            }
-        )
+        # 去重判断
+        unique_id = stats.get("id", "")
+        if unique_id in existing_titles:
+            continue
+        existing_titles.add(unique_id)
 
-print("✅ Keep 数据同步到 Notion 完成！")
+        try:
+            notion.pages.create(
+                parent={"database_id": NOTION_DATABASE_ID},
+                properties={
+                    "名称": {"title": [{"text": {"content": title}}]},
+                    "日期": {"date": {"start": stats.get("doneDate")}},
+                    "时长": {"number": stats.get("duration", 0)},
+                    "距离": {"number": stats.get("kmDistance", 0)},
+                    "卡路里": {"number": stats.get("calorie", 0)},
+                    "类型": {"rich_text": [{"text": {"content": sport_type}}]},
+                    "平均心率": {"number": (stats.get("heartRate") or {}).get("averageHeartRate", 0)},
+                    "配速": {"rich_text": [{"text": {"content": f"{stats.get('averagePace', 0)} 秒/公里"}}]}
+                }
+            )
+        except Exception as e:
+            print(f"❌ 同步失败：{e}")
+
+print("✅ 所有运动数据同步完成！")
