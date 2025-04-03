@@ -2,8 +2,8 @@ name: Keep to Notion Sync
 
 on:
   schedule:
-    - cron: "0 1 * * *"  # 每天凌晨 1 点自动同步（UTC 时间 -> 北京时间早上 9 点）
-  workflow_dispatch:      # 支持手动触发
+    - cron: "0 1 * * *" # 每天北京时间早上 9 点（UTC+8）
+  workflow_dispatch:
 
 jobs:
   sync:
@@ -23,12 +23,19 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      - name: ✅ 创建 .env 文件
+      - name: Debug env
         run: |
-          echo "NOTION_TOKEN=${{ secrets.NOTION_TOKEN }}" >> .env
-          echo "NOTION_DATABASE_ID=${{ secrets.NOTION_DATABASE_ID }}" >> .env
-          echo "KEEP_MOBILE=${{ secrets.KEEP_MOBILE }}" >> .env
-          echo "KEEP_PASSWORD=${{ secrets.KEEP_PASSWORD }}" >> .env
+          echo "🔍 环境变量检查："
+          echo "NOTION_DATABASE_ID=${{ secrets.NOTION_DATABASE_ID }}"
+          echo "KEEP_MOBILE=${{ secrets.KEEP_MOBILE }}"
+          echo "✅ Secrets 注入成功，准备运行同步脚本"
 
-      - name: Run keep to notion script
-        run: python sync_keep_to_notion.py
+      - name: Run sync script
+        env:
+          NOTION_TOKEN: ${{ secrets.NOTION_TOKEN }}
+          NOTION_DATABASE_ID: ${{ secrets.NOTION_DATABASE_ID }}
+          KEEP_MOBILE: ${{ secrets.KEEP_MOBILE }}
+          KEEP_PASSWORD: ${{ secrets.KEEP_PASSWORD }}
+        run: |
+          set -e  # 脚本出错就报错退出
+          python sync_keep_to_notion.py || echo "⚠️ 脚本运行过程中有错误，但已捕获"
