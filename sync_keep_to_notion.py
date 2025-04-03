@@ -98,7 +98,7 @@ for group in data:
             "距离": {"number": km},
             "卡路里": {"number": stats.get("calorie")},
             "类型": {"rich_text": [{"text": {"content": workout_id}}]},
-            "平均配速": {"rich_text": [{"text": {"content": pace_text}}]},
+            "平均配速": {"number": pace_sec if km > 0 else 0},
             "平均心率": {
                 "number": stats.get("heartRate", {}).get("averageHeartRate", 0)
                 if isinstance(stats.get("heartRate"), dict) else 0
