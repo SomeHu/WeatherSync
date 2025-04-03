@@ -56,3 +56,4 @@ if isinstance(records, list) and all(isinstance(g, dict) for g in records):
 else:
     print("❌ 警告：Keep 返回的数据格式不符合预期，可能登录失败或未获取到数据。")
 
+print(f"📌 当前使用的数据库 ID：{repr(NOTION_DATABASE_ID)}")
