@@ -1,16 +1,16 @@
+
 import os
 import requests
 from notion_client import Client
 from dotenv import load_dotenv
 
+# 加载环境变量
 load_dotenv()
 
 NOTION_TOKEN = os.getenv("NOTION_TOKEN")
 NOTION_DATABASE_ID = os.getenv("NOTION_DATABASE_ID")
 KEEP_MOBILE = os.getenv("KEEP_MOBILE")
 KEEP_PASSWORD = os.getenv("KEEP_PASSWORD")
-
-notion = Client(auth=NOTION_TOKEN)
 
 # 登录 Keep 获取 token
 login_res = requests.post("https://api.gotokeep.com/v1.1/users/login", json={
@@ -19,71 +19,85 @@ login_res = requests.post("https://api.gotokeep.com/v1.1/users/login", json={
 })
 token = login_res.json().get("data", {}).get("token")
 
-# 获取所有数据类型（不限制 running）
+# 请求 Keep 运动数据
 res = requests.get("https://api.gotokeep.com/pd/v3/stats/detail", params={
-    "dateUnit": "all", "type": "all", "lastDate": 0
+    "dateUnit": "all", "type": "", "lastDate": 0
 }, headers={"Authorization": f"Bearer {token}"})
 
-records = res.json().get("data", {}).get("records", [])
-print(f"👀 汇总所有类型后的记录条数： {len(records)}")
+data = res.json().get("data", {}).get("records", [])
+print(f"👀 汇总所有类型后的记录条数： {len(data)}")
 
-# 简化 emoji 映射
+# 设置 emoji 分类
 TYPE_EMOJI_MAP = {
-    "running": "🏃",
+    "running": "🏃‍♂️",
     "walking": "🚶",
     "cycling": "🚴",
-    "default": "💪"
+    "swimming": "🏊",
+    "default": "🏋️"
 }
 
-def is_duplicate(done_date):
+# 初始化 Notion 客户端
+notion = Client(auth=NOTION_TOKEN)
+
+# 去重辅助函数
+def page_exists(done_date, workout_id):
     query = notion.databases.query(
         **{
             "database_id": NOTION_DATABASE_ID,
             "filter": {
-                "property": "日期",
-                "date": {"equals": done_date}
+                "and": [
+                    {"property": "日期", "date": {"equals": done_date}},
+                    {"property": "类型", "rich_text": {"contains": workout_id}}
+                ]
             }
         }
     )
     return len(query.get("results", [])) > 0
 
-for group in records:
-    for item in group.get("logs", []):
+# 开始处理每条记录
+for group in data:
+    logs = group.get("logs", [])
+    for item in logs:
         stats = item.get("stats", {})
-        if not stats:
+        done_date = stats.get("doneDate", "")
+        if not done_date.startswith("2025"):
             continue
 
-        done_date = stats.get("doneDate")
-        if is_duplicate(done_date):
-            print(f"⚠️ 已存在：{done_date}，跳过")
+        sport_type = stats.get("type", "unknown")
+        workout_id = stats.get("id", "")
+        if page_exists(done_date, workout_id):
             continue
 
-        sport_type = stats.get("type", "default")
-        emoji = TYPE_EMOJI_MAP.get(sport_type, TYPE_EMOJI_MAP["default"])
-        title = f"{emoji} {stats.get('name', '未命名')}{stats.get('nameSuffix', '')}"
+        # 生成标题
+        title = f"{TYPE_EMOJI_MAP.get(sport_type, TYPE_EMOJI_MAP['default'])} {stats.get('name', '未命名')} {stats.get('nameSuffix', '')}"
 
-        # 创建 Notion 页面
-        notion.pages.create(
-            parent={"database_id": NOTION_DATABASE_ID},
-            properties={
-                "名称": {"title": [{"text": {"content": title}}]},
-                "日期": {"date": {"start": done_date}},
-                "类型": {"rich_text": [{"text": {"content": sport_type}}]},
-                "时长": {"number": stats.get("duration")},
-                "距离": {"number": stats.get("kmDistance")},
-                "卡路里": {"number": stats.get("calorie")},
-                "配速": {"number": stats.get("averagePace")},
-                "平均心率": {
-                    "number": stats.get("heartRate", {}).get("averageHeartRate", 0) if stats.get("heartRate") else 0
-                },
-                "轨迹图": {
-                    "files": [{
-                        "name": "track.jpg",
-                        "type": "external",
-                        "external": {"url": stats.get("trackWaterMark")}
-                    }] if stats.get("trackWaterMark") else []
-                }
+        # 计算配速
+        duration = stats.get("duration", 0)
+        km = stats.get("kmDistance", 0.0)
+        pace_text = "无"
+        if km > 0:
+            pace_sec = int(duration / km)
+            pace_text = f"{pace_sec // 60}:{pace_sec % 60:02d} 分/公里"
+
+        # 写入 Notion
+        notion.pages.create(parent={"database_id": NOTION_DATABASE_ID}, properties={
+            "名称": {"title": [{"text": {"content": title}}]},
+            "日期": {"date": {"start": done_date}},
+            "时长": {"number": duration},
+            "距离": {"number": km},
+            "卡路里": {"number": stats.get("calorie")},
+            "类型": {"rich_text": [{"text": {"content": workout_id}}]},
+            "平均配速": {"rich_text": [{"text": {"content": pace_text}}]},
+            "平均心率": {
+                "number": stats.get("heartRate", {}).get("averageHeartRate", 0)
+                if isinstance(stats.get("heartRate"), dict) else 0
+            },
+            "轨迹图": {
+                "files": [{
+                    "name": "track.jpg",
+                    "external": {"url": stats.get("trackWaterMark", "")}
+                }] if stats.get("trackWaterMark") else []
             }
-        )
+        })
 
-print("✅ 同步完成！")
+print("✅ 已完成 Notion 同步")
