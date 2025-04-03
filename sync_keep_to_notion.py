@@ -11,13 +11,18 @@ NOTION_TOKEN = os.getenv("NOTION_TOKEN")
 NOTION_DATABASE_ID = os.getenv("NOTION_DATABASE_ID")
 KEEP_MOBILE = os.getenv("KEEP_MOBILE")
 KEEP_PASSWORD = os.getenv("KEEP_PASSWORD")
-QWEATHER_API_KEY = os.getenv("QWEATHER_API_KEY")
-LOCATION_CODE = os.getenv("LOCATION_CODE", "101251405")  # 默认湖南祁东
+OPENWEATHER_API_KEY = os.getenv("OPENWEATHER_API_KEY")
+CITY_ID = os.getenv("CITY_ID", "1798082")  # 默认城市：北京，城市 ID 可替换为你的城市 ID
+
+# 检查环境变量
+if not all([NOTION_TOKEN, NOTION_DATABASE_ID, KEEP_MOBILE, KEEP_PASSWORD, OPENWEATHER_API_KEY]):
+    print("缺少环境变量！请检查 NOTION_TOKEN, NOTION_DATABASE_ID, KEEP_MOBILE, KEEP_PASSWORD 和 OPENWEATHER_API_KEY 是否设置。")
+    exit(1)
 
 # 调试环境变量
 print(f"NOTION_TOKEN: {NOTION_TOKEN}")
-print(f"QWEATHER_API_KEY: {QWEATHER_API_KEY}")
-print(f"Location Code: {LOCATION_CODE}")
+print(f"OPENWEATHER_API_KEY: {OPENWEATHER_API_KEY}")
+print(f"City ID: {CITY_ID}")
 
 # 初始化 Notion 客户端
 notion = Client(auth=NOTION_TOKEN)
@@ -27,32 +32,37 @@ login_res = requests.post("https://api.gotokeep.com/v1.1/users/login", json={
     "mobile": KEEP_MOBILE,
     "password": KEEP_PASSWORD
 })
+login_res.raise_for_status()  # 确保请求成功
 token = login_res.json().get("data", {}).get("token")
 
 # 请求 Keep 运动数据
 res = requests.get("https://api.gotokeep.com/pd/v3/stats/detail", params={
     "dateUnit": "all", "type": "", "lastDate": 0
 }, headers={"Authorization": f"Bearer {token}"})
+res.raise_for_status()  # 确保请求成功
 data = res.json().get("data", {}).get("records", [])
 print(f"\U0001f440 汇总所有类型后的记录条数： {len(data)}")
 
 # 天气信息获取函数
-def get_weather(location_code):
-    weather_url = f"https://api.qweather.com/v7/weather/now?location={location_code}&key={QWEATHER_API_KEY}"
+def get_weather(city_id):
+    weather_url = f"http://api.openweathermap.org/data/2.5/weather?id={city_id}&appid={OPENWEATHER_API_KEY}&units=metric&lang=zh_cn"
     headers = {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
     }
     print(f"Weather API URL: {weather_url}")  # 调试 URL
-    response = requests.get(weather_url, headers=headers)
-    weather_data = response.json()
-    print(f"Weather data: {weather_data}")  # 调试返回数据
-    if weather_data.get("code") == "200":
-        temperature = weather_data["now"]["temp"]
-        description = weather_data["now"]["text"]
-        return f"{description} ~ {temperature}°C"
-    else:
-        return f"天气请求失败: {weather_data.get('message', '未知错误')}"
-
+    try:
+        response = requests.get(weather_url, headers=headers)
+        response.raise_for_status()  # 确保请求成功
+        weather_data = response.json()
+        if weather_data.get("cod") == 200:
+            temperature = weather_data["main"]["temp"]
+            description = weather_data["weather"][0]["description"]
+            return f"{description} ~ {temperature}°C"
+        else:
+            return f"天气请求失败: {weather_data.get('message', '未知错误')}"
+    except requests.exceptions.RequestException as e:
+        print(f"天气请求失败: {e}")
+        return "无法获取天气信息"
 
 # 判断是否已经同步过此记录
 def page_exists(done_date, workout_id):
@@ -87,7 +97,7 @@ for group in data:
             continue
 
         # 获取天气信息
-        weather_info = get_weather(LOCATION_CODE)
+        weather_info = get_weather(CITY_ID)
         print(f"Weather for {done_date}: {weather_info}")
 
         # 创建页面标题
