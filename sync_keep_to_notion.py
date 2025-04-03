@@ -22,10 +22,13 @@ token = login_res.json().get("data", {}).get("token")
 res = requests.get("https://api.gotokeep.com/pd/v3/stats/detail", params={
     "dateUnit": "all", "type": "running", "lastDate": 0
 }, headers={"Authorization": f"Bearer {token}"})
+# 原始 Keep 返回数据
 data_raw = res.json()
 print("📦 Keep 原始返回内容：", data_raw)
-records = data_raw.get("data", {}).get("records", [])
-print("📦 提取后的 records 内容：", records)
+
+# ✅ 正确提取 records 列表
+data = data_raw.get("data", {}).get("records", [])
+print("👀 提取后的 data 内容：", data)
 
 
 # 初始化 Notion 客户端
