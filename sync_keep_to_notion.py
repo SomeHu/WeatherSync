@@ -58,15 +58,26 @@ def page_exists(done_date, workout_id):
 for group in data:
     logs = group.get("logs", [])
     for item in logs:
-        stats = item.get("stats", {})
+        stats = item.get("stats")
+        if not stats:
+            continue  # ⚠️ 跳过没有 stats 的记录
+
         done_date = stats.get("doneDate", "")
         if not done_date.startswith("2025"):
             continue
 
+        # ✅ 以下逻辑保持不变
         sport_type = stats.get("type", "unknown")
         workout_id = stats.get("id", "")
+        km = stats.get("kmDistance", 0.0)
+
+        print(f"📅 当前处理日期: {done_date}, 类型: {sport_type}, 距离: {km}")
+
         if page_exists(done_date, workout_id):
             continue
+
+        # ...（创建 Notion 页面）
+
 
         # 生成标题
         title = f"{TYPE_EMOJI_MAP.get(sport_type, TYPE_EMOJI_MAP['default'])} {stats.get('name', '未命名')} {stats.get('nameSuffix', '')}"
