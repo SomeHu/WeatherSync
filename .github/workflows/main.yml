@@ -29,5 +29,6 @@ jobs:
           NOTION_DATABASE_ID: ${{ secrets.NOTION_DATABASE_ID }}
           KEEP_MOBILE: ${{ secrets.KEEP_MOBILE }}
           KEEP_PASSWORD: ${{ secrets.KEEP_PASSWORD }}
+          QWEATHER_API_KEY: ${{ secrets.QWEATHER_API_KEY }}  # ✅ 添加这一行！
         run: |
           python sync_keep_to_notion.py
