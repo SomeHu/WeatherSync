@@ -1,6 +1,5 @@
 import os
 import requests
-import datetime
 from notion_client import Client
 from dotenv import load_dotenv
 
@@ -11,19 +10,7 @@ NOTION_TOKEN = os.getenv("NOTION_TOKEN")
 NOTION_DATABASE_ID = os.getenv("NOTION_DATABASE_ID")
 KEEP_MOBILE = os.getenv("KEEP_MOBILE")
 KEEP_PASSWORD = os.getenv("KEEP_PASSWORD")
-WEATHER_API_KEY = os.getenv("WEATHER_API_KEY")  # 新增天气 KEY
-
-# Notion 初始化
-notion = Client(auth=NOTION_TOKEN)
-
-# Emoji 分类
-TYPE_EMOJI_MAP = {
-    "running": "🏃‍♂️",
-    "walking": "🚶",
-    "cycling": "🚴",
-    "swimming": "🏊",
-    "default": "🏋️"
-}
+WEATHER_API_KEY = os.getenv("WEATHER_API_KEY")  # 获取天气 API 密钥
 
 # 登录 Keep 获取 token
 login_res = requests.post("https://api.gotokeep.com/v1.1/users/login", json={
@@ -38,9 +25,33 @@ res = requests.get("https://api.gotokeep.com/pd/v3/stats/detail", params={
 }, headers={"Authorization": f"Bearer {token}"})
 
 data = res.json().get("data", {}).get("records", [])
-print(f"👀 汇总所有类型后的记录条数： {len(data)}")
+print(f"\U0001f440 汇总所有类型后的记录条数： {len(data)}")
 
-# 查询 Notion 中是否已存在
+# 设置 emoji 分类
+TYPE_EMOJI_MAP = {
+    "running": "🏃‍♂️",
+    "walking": "🚶",
+    "cycling": "🚴",
+    "swimming": "🏊",
+    "default": "🏋️"
+}
+
+# 获取天气信息
+def get_weather_info(city_id="101020100"):
+    weather_url = f"http://t.weather.sojson.com/api/weather/city/{city_id}"
+    response = requests.get(weather_url)
+    weather_data = response.json()
+    if weather_data["status"] == 200:
+        weather_info = weather_data["data"]
+        temperature = weather_info["wendu"]
+        weather_type = weather_info["forecast"][0]["type"]
+        return f"{weather_type} ~ {temperature}°C"
+    return "未知 ~°C"
+
+# 初始化 Notion 客户端
+notion = Client(auth=NOTION_TOKEN)
+
+# 去重辅助函数
 def page_exists(done_date, workout_id):
     query = notion.databases.query(
         **{
@@ -55,24 +66,13 @@ def page_exists(done_date, workout_id):
     )
     return len(query.get("results", [])) > 0
 
-# 获取天气信息（城市写死为上海，可按需更改）
-def get_weather(date_str):
-    try:
-        WEATHER_API_KEY = os.getenv("WEATHER_API_KEY")url = f"https://devapi.qweather.com/v7/weather/now?location={location}&key={WEATHER_API_KEY}"
-        resp = requests.get(url)
-        w = resp.json()
-        temp = w.get("weatherDaily", [{}])[0]
-        return f"{temp.get('textDay', '未知')} {temp.get('tempMin', '')}~{temp.get('tempMax', '')}°C"
-    except Exception:
-        return "未知 ~°C"
-
-# 遍历并写入
+# 开始处理每条记录
 for group in data:
     logs = group.get("logs", [])
     for item in logs:
         stats = item.get("stats")
         if not stats:
-            continue
+            continue  # ⚠️ 跳过没有 stats 的记录
 
         done_date = stats.get("doneDate", "")
         if not done_date.startswith("2025"):
@@ -81,27 +81,33 @@ for group in data:
         sport_type = stats.get("type", "unknown")
         workout_id = stats.get("id", "")
         km = stats.get("kmDistance", 0.0)
-        duration = stats.get("duration", 0)
+
+        print(f"\U0001f4c5 当前处理日期: {done_date}, 类型: {sport_type}, 距离: {km}")
 
         if page_exists(done_date, workout_id):
             continue
 
-        # 配速
+        # 获取天气信息
+        weather_info = get_weather_info()
+
+        # 生成标题
+        title = f"{TYPE_EMOJI_MAP.get(sport_type, TYPE_EMOJI_MAP['default'])} {stats.get('name', '未命名')} {stats.get('nameSuffix', '')}"
+
+        # 计算配速（秒/公里）
+        duration = stats.get("duration", 0)
         pace_seconds = int(duration / km) if km > 0 else 0
-        # 心率
+
+        # 获取心率
         hr = stats.get("heartRate")
         avg_hr = hr.get("averageHeartRate", 0) if isinstance(hr, dict) else 0
-        # 设备
+
+        # 获取来源（Keep App, vivo, Apple 等）
         vendor = stats.get("vendor", {})
         source = vendor.get("source", "Keep")
         device = vendor.get("deviceModel", "")
         vendor_display = f"{source} {device}".strip()
-        # 天气
-        date_only = done_date[:10]
-        weather_text = get_weather(date_only)
 
-        title = f"{TYPE_EMOJI_MAP.get(sport_type, TYPE_EMOJI_MAP['default'])} {stats.get('name', '未命名')} {stats.get('nameSuffix', '')}"
-
+        # 写入 Notion
         notion.pages.create(parent={"database_id": NOTION_DATABASE_ID}, properties={
             "名称": {"title": [{"text": {"content": title}}]},
             "日期": {"date": {"start": done_date}},
@@ -111,14 +117,14 @@ for group in data:
             "类型": {"rich_text": [{"text": {"content": workout_id}}]},
             "平均配速": {"number": pace_seconds},
             "平均心率": {"number": avg_hr},
-            "天气": {"rich_text": [{"text": {"content": weather_text}}]},
-            "数据来源": {"rich_text": [{"text": {"content": vendor_display}}]},
+            "天气": {"rich_text": [{"text": {"content": weather_info}}]},
             "轨迹图": {
                 "files": [{
                     "name": "track.jpg",
                     "external": {"url": stats.get("trackWaterMark", "")}
                 }] if stats.get("trackWaterMark") else []
-            }
+            },
+            "数据来源": {"rich_text": [{"text": {"content": vendor_display}}]}
         })
 
-print("✅ 已完成 Notion 同步")
+print("\u2705 已完成 Notion 同步")
