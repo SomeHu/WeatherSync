@@ -45,7 +45,7 @@ def get_weather(location):
     location_name = get_location_name(location)
 
     if location_name != "未找到城市信息":
-        weather_url = f"http://api.weatherstack.com/current?access_key={WEATHERSTACK_API_KEY}&query={location_name}&language=zh"
+        weather_url = f"https://api.weatherstack.com/current?access_key=YOUR_ACCESS_KEY&query=Hengyang&units=m&language=zh"
         response = requests.get(weather_url)
         weather_data = response.json()
 
