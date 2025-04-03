@@ -58,7 +58,7 @@ def page_exists(done_date, workout_id):
 # 获取天气信息（城市写死为上海，可按需更改）
 def get_weather(date_str):
     try:
-        url = f"https://api.qweather.com/v7/historical/weather?location=101250401&date={date_str}&key={9b67809cf3134494a4db4697b8f0d957}"
+        WEATHER_API_KEY = os.getenv("WEATHER_API_KEY")url = f"https://devapi.qweather.com/v7/weather/now?location={location}&key={WEATHER_API_KEY}"
         resp = requests.get(url)
         w = resp.json()
         temp = w.get("weatherDaily", [{}])[0]
