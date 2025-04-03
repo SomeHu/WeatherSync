@@ -1,7 +1,3 @@
-始终显示详情
-
-复制
-from pathlib import Path
 
 code = '''
 import os
