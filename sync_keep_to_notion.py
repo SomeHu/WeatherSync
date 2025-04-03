@@ -1,17 +1,23 @@
-# 导入所需的库
 import os
 import requests
-from notion_client import Client  # 添加这一行，导入 Client 类
+from notion_client import Client
 from dotenv import load_dotenv
 
 # 加载环境变量
 load_dotenv()
 
+# 从环境变量获取配置信息
 NOTION_TOKEN = os.getenv("NOTION_TOKEN")
 NOTION_DATABASE_ID = os.getenv("NOTION_DATABASE_ID")
 KEEP_MOBILE = os.getenv("KEEP_MOBILE")
 KEEP_PASSWORD = os.getenv("KEEP_PASSWORD")
-QWEATHER_API_KEY = os.getenv("QWEATHER_API_KEY")  # 新的天气 API 密钥
+QWEATHER_API_KEY = os.getenv("QWEATHER_API_KEY")
+LOCATION_CODE = os.getenv("LOCATION_CODE", "101251405")  # 默认湖南祁东
+
+# 调试环境变量
+print(f"NOTION_TOKEN: {NOTION_TOKEN}")
+print(f"QWEATHER_API_KEY: {QWEATHER_API_KEY}")
+print(f"Location Code: {LOCATION_CODE}")
 
 # 初始化 Notion 客户端
 notion = Client(auth=NOTION_TOKEN)
@@ -30,25 +36,15 @@ res = requests.get("https://api.gotokeep.com/pd/v3/stats/detail", params={
 data = res.json().get("data", {}).get("records", [])
 print(f"\U0001f440 汇总所有类型后的记录条数： {len(data)}")
 
-TYPE_EMOJI_MAP = {
-    "running": "🏃‍♂️",
-    "walking": "🚶",
-    "cycling": "🚴",
-    "swimming": "🏊",
-    "hiking": "🥾",
-    "default": "🏋️"
-}
-
-notion = Client(auth=NOTION_TOKEN)
-
+# 天气信息获取函数
 def get_weather(location_code):
     weather_url = f"https://api.qweather.com/v7/weather/now?location={location_code}&key={QWEATHER_API_KEY}"
-    print(f"Weather API URL: {weather_url}")  # 调试 URL
+    print(f"Weather API URL: {weather_url}")
     try:
         response = requests.get(weather_url)
-        response.raise_for_status()  # 如果状态码不是 200，会抛出异常
+        response.raise_for_status()
         weather_data = response.json()
-        print(f"Weather data: {weather_data}")  # 调试返回数据
+        print(f"Weather data: {weather_data}")
         if weather_data.get("code") == "200":
             temperature = weather_data["now"]["temp"]
             description = weather_data["now"]["text"]
@@ -58,8 +54,7 @@ def get_weather(location_code):
     except requests.exceptions.RequestException as e:
         return f"天气请求失败: {str(e)}"
 
-
-
+# 判断是否已经同步过此记录
 def page_exists(done_date, workout_id):
     query = notion.databases.query(
         **{
@@ -74,6 +69,7 @@ def page_exists(done_date, workout_id):
     )
     return len(query.get("results", [])) > 0
 
+# 运动记录同步
 for group in data:
     logs = group.get("logs", [])
     for item in logs:
@@ -81,9 +77,6 @@ for group in data:
         if not stats:
             continue
         done_date = stats.get("doneDate", "")
-        # if not done_date.startswith("2025"):  # 临时注释，同步所有日期
-        #     continue
-
         sport_type = stats.get("type", "unknown")
         workout_id = stats.get("id", "")
         km = stats.get("kmDistance", 0.0)
@@ -93,10 +86,12 @@ for group in data:
         if page_exists(done_date, workout_id):
             continue
 
-        # 使用新的天气 API 获取天气信息
-        location_code = "101250404"  # 例如，使用 Qidong 城市的代码
-        weather_info = get_weather(location_code)
-        title = f"{TYPE_EMOJI_MAP.get(sport_type, TYPE_EMOJI_MAP['default'])} {stats.get('name', '未命名')} {stats.get('nameSuffix', '')}"
+        # 获取天气信息
+        weather_info = get_weather(LOCATION_CODE)
+        print(f"Weather for {done_date}: {weather_info}")
+
+        # 创建页面标题
+        title = f"🏃‍♂️ {stats.get('name', '未命名')} {stats.get('nameSuffix', '')}"
         duration = stats.get("duration", 0)
         pace_seconds = int(duration / km) if km > 0 else 0
         hr = stats.get("heartRate")
@@ -107,6 +102,7 @@ for group in data:
         vendor_display = f"{source} {device}".strip()
 
         try:
+            # 向 Notion 添加数据
             notion.pages.create(
                 parent={"database_id": NOTION_DATABASE_ID},
                 properties={
@@ -119,14 +115,11 @@ for group in data:
                     "平均配速": {"number": pace_seconds},
                     "平均心率": {"number": avg_hr},
                     "天气": {"rich_text": [{"text": {"content": weather_info}}] if weather_info else []},
-                    "轨迹图": {"files": [{"name": "track.jpg", "external": {"url": stats.get("trackWaterMark", "")}}] if stats.get("trackWaterMark") else []},
                     "数据来源": {"rich_text": [{"text": {"content": vendor_display}}]}
                 }
             )
             print(f"\u2705 已同步: {done_date} - {title}")
         except Exception as e:
             print(f"\U0001f6ab 同步失败: {done_date} - {title}, 错误: {str(e)}")
-print(f"NOTION_TOKEN: {NOTION_TOKEN}")
-print(f"QWEATHER_API_KEY: {QWEATHER_API_KEY}")
-print(f"Location Code: {location_code}")
+
 print("\u2705 已完成所有 Notion 同步")
