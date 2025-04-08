@@ -2,9 +2,9 @@ name: Keep to Notion Sync
 
 on:
   schedule:
-    - cron: "0 20 * * *"  # 每天北京时间 04:00
+    - cron: "0 3 * * *"  # 每天北京时间 03:00
     - cron: "0 13 * * *"  # 每天北京时间 21:00
-  workflow_dispatch: # 允许手动触发
+  workflow_dispatch:  # 允许手动触发
 
 jobs:
   sync:
