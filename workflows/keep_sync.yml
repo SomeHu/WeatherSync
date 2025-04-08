@@ -30,12 +30,14 @@ jobs:
           echo "KEEP_MOBILE=${{ secrets.KEEP_MOBILE }}"
           echo "✅ Secrets 注入成功，准备运行同步脚本"
 
-      - name: Run sync script
+      - name: Run keep to notion script
         env:
           NOTION_TOKEN: ${{ secrets.NOTION_TOKEN }}
           NOTION_DATABASE_ID: ${{ secrets.NOTION_DATABASE_ID }}
           KEEP_MOBILE: ${{ secrets.KEEP_MOBILE }}
           KEEP_PASSWORD: ${{ secrets.KEEP_PASSWORD }}
+          OPENWEATHER_API_KEY: ${{ secrets.OPENWEATHER_API_KEY }}  # 保留 OpenWeather API 密钥
         run: |
-          set -e  # 脚本出错就报错退出
-          python sync_keep_to_notion.py || echo "⚠️ 脚本运行过程中有错误，但已捕获"
+          python sync_keep_to_notion.py
+
+
