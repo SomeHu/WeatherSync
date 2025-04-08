@@ -1,0 +1,32 @@
+name: Weather Sync
+
+on:
+  schedule:
+    - cron: "0 3 * * *"  # 每天北京时间 03:00
+  workflow_dispatch:  # 允许手动触发
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install requests python-dotenv notion-client  # 安装依赖
+
+      - name: Run weather sync script
+        env:
+          NOTION_TOKEN: ${{ secrets.NOTION_TOKEN }}
+          NOTION_DATABASE_ID: ${{ secrets.NOTION_DATABASE_ID }}
+          OPENWEATHER_API_KEY: ${{ secrets.OPENWEATHER_API_KEY }}
+          CITY_ID: ${{ secrets.CITY_ID }}
+        run: |
+          python sync_weather.py  # 运行天气同步脚本
