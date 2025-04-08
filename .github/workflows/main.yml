@@ -1,9 +1,8 @@
-name: Keep to Notion Sync
+name: Weather Sync
 
 on:
   schedule:
     - cron: "0 3 * * *"  # 每天北京时间 03:00
-    - cron: "0 13 * * *"  # 每天北京时间 21:00
   workflow_dispatch:  # 允许手动触发
 
 jobs:
@@ -23,13 +22,13 @@ jobs:
           python -m pip install --upgrade pip
           pip install requests python-dotenv notion-client  # 安装依赖
 
-      - name: Run keep to notion script
+      - name: Run weather sync script
         env:
           NOTION_TOKEN: ${{ secrets.NOTION_TOKEN }}
           NOTION_DATABASE_ID: ${{ secrets.NOTION_DATABASE_ID }}
           KEEP_MOBILE: ${{ secrets.KEEP_MOBILE }}
           KEEP_PASSWORD: ${{ secrets.KEEP_PASSWORD }}
-          OPENWEATHER_API_KEY: ${{ secrets.OPENWEATHER_API_KEY }}  # 保留 OpenWeather API 密钥
+          OPENWEATHER_API_KEY: ${{ secrets.OPENWEATHER_API_KEY }}
+          CITY_ID: ${{ secrets.CITY_ID }}
         run: |
-          python sync_keep_to_notion.py
-
+          python sync_weather.py  # 这里是你的天气同步脚本的文件名
