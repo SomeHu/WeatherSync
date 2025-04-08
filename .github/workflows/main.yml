@@ -22,13 +22,12 @@ jobs:
           python -m pip install --upgrade pip
           pip install requests python-dotenv notion-client  # 安装依赖
 
-      - name: Run weather sync script
+      - name: Run keep to notion script
         env:
           NOTION_TOKEN: ${{ secrets.NOTION_TOKEN }}
           NOTION_DATABASE_ID: ${{ secrets.NOTION_DATABASE_ID }}
           KEEP_MOBILE: ${{ secrets.KEEP_MOBILE }}
           KEEP_PASSWORD: ${{ secrets.KEEP_PASSWORD }}
-          OPENWEATHER_API_KEY: ${{ secrets.OPENWEATHER_API_KEY }}
-          CITY_ID: ${{ secrets.CITY_ID }}
+          OPENWEATHER_API_KEY: ${{ secrets.OPENWEATHER_API_KEY }}  # 保留 OpenWeather API 密钥
         run: |
-          python sync_weather.py  # 这里是你的天气同步脚本的文件名
+          python sync_keep_to_notion.py
