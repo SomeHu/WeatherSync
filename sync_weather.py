@@ -3,6 +3,7 @@ import requests
 from notion_client import Client
 from dotenv import load_dotenv
 from datetime import datetime
+import pytz  # 导入 pytz 库
 
 # 加载环境变量
 load_dotenv()
@@ -11,7 +12,7 @@ load_dotenv()
 NOTION_TOKEN = os.getenv("NOTION_TOKEN")
 NOTION_DATABASE_ID = os.getenv("NOTION_DATABASE_ID")
 OPENWEATHER_API_KEY = os.getenv("OPENWEATHER_API_KEY")
-CITY_ID = os.getenv("CITY_ID", "1798082")  # 默认城市：北京，城市 ID 可替换为你的城市 ID
+CITY_ID = os.getenv("CITY_ID", "1808370")  # 默认城市：北京，城市 ID 可替换为你的城市 ID
 
 # 检查环境变量
 if not all([NOTION_TOKEN, NOTION_DATABASE_ID, OPENWEATHER_API_KEY]):
@@ -20,6 +21,16 @@ if not all([NOTION_TOKEN, NOTION_DATABASE_ID, OPENWEATHER_API_KEY]):
 
 # 初始化 Notion 客户端
 notion = Client(auth=NOTION_TOKEN)
+
+# 设置时区为北京时间
+beijing_tz = pytz.timezone('Asia/Shanghai')
+
+# 获取北京时间
+def get_beijing_date():
+    # 获取当前的UTC时间，并转换为北京时间
+    utc_now = datetime.utcnow().replace(tzinfo=pytz.utc)
+    beijing_now = utc_now.astimezone(beijing_tz)
+    return beijing_now.strftime('%Y-%m-%d')
 
 # 天气信息获取函数
 def get_weather(city_id):
@@ -45,7 +56,7 @@ def get_weather(city_id):
 
 # 创建页面
 def create_weather_page():
-    today = datetime.today().strftime('%Y-%m-%d')  # 获取今天的日期
+    today = get_beijing_date()  # 获取北京时间
     weather_info = get_weather(CITY_ID)
     
     # 创建页面标题
