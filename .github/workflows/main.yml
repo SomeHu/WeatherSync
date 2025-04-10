@@ -2,8 +2,11 @@ name: Weather Sync
 
 on:
   schedule:
-    - cron: "0 3 * * *"  # 每天北京时间 03:00
-  workflow_dispatch:  # 允许手动触发
+    # 注意以下三行都是UTC时间
+    - cron: "0 0 * * *"   # 对应北京时间 08:00
+    - cron: "0 6 * * *"   # 对应北京时间 14:00
+    - cron: "0 11 * * *"  # 对应北京时间 19:00
+  workflow_dispatch:       # 允许手动触发
 
 jobs:
   sync:
