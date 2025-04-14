@@ -140,9 +140,9 @@ def main():
             weather_info = get_weather(CITY_ID, OPENWEATHER_API_KEY)
             pace_seconds = int(duration / km) if km > 0 else 0
             vendor = stats.get("vendor", {})
-            source = vendor.get("source", "Keep")
-            device_model = vendor.get("deviceModel", "")
-            vendor_str = (source + " " + device_model).strip()
+            source = vendor.get("source") or ""
+            device_model = vendor.get("deviceModel") or ""
+            vendor_str = f"{source} {device_model}".strip()
             title = f"🏃‍♂️ {name} {name_suffix}"
 
             gps_points = stats.get("gpsData", [])
