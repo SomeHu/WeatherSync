@@ -2,134 +2,203 @@ import os
 import requests
 from notion_client import Client
 from dotenv import load_dotenv
+from urllib.parse import quote
 
 # 加载环境变量
 load_dotenv()
 
-# 从环境变量获取配置信息
 NOTION_TOKEN = os.getenv("NOTION_TOKEN")
 NOTION_DATABASE_ID = os.getenv("NOTION_DATABASE_ID")
 KEEP_MOBILE = os.getenv("KEEP_MOBILE")
 KEEP_PASSWORD = os.getenv("KEEP_PASSWORD")
 OPENWEATHER_API_KEY = os.getenv("OPENWEATHER_API_KEY")
-CITY_ID = os.getenv("CITY_ID", "1798082")  # 默认城市：北京，城市 ID 可替换为你的城市 ID
+CITY_ID = os.getenv("CITY_ID", "1798082")
+AMAP_KEY = os.getenv("AMAP_KEY")  # 高德地图 Key，用于生成跑步轨迹图
 
-# 检查环境变量
+# 校验环境变量
 if not all([NOTION_TOKEN, NOTION_DATABASE_ID, KEEP_MOBILE, KEEP_PASSWORD, OPENWEATHER_API_KEY]):
-    print("缺少环境变量！请检查 NOTION_TOKEN, NOTION_DATABASE_ID, KEEP_MOBILE, KEEP_PASSWORD 和 OPENWEATHER_API_KEY 是否设置。")
+    print("缺少关键环境变量，请检查 NOTION_TOKEN、NOTION_DATABASE_ID、KEEP_MOBILE、KEEP_PASSWORD、OPENWEATHER_API_KEY 是否设置。")
     exit(1)
-
-# 调试环境变量
-print(f"NOTION_TOKEN: {NOTION_TOKEN}")
-print(f"OPENWEATHER_API_KEY: {OPENWEATHER_API_KEY}")
-print(f"City ID: {CITY_ID}")
 
 # 初始化 Notion 客户端
 notion = Client(auth=NOTION_TOKEN)
 
-# 登录 Keep 获取 token
-login_res = requests.post("https://api.gotokeep.com/v1.1/users/login", json={
-    "mobile": KEEP_MOBILE,
-    "password": KEEP_PASSWORD
-})
-login_res.raise_for_status()  # 确保请求成功
-token = login_res.json().get("data", {}).get("token")
+def login_keep(mobile, password):
+    r = requests.post(
+        "https://api.gotokeep.com/v1.1/users/login",
+        json={"mobile": mobile, "password": password}
+    )
+    r.raise_for_status()
+    data = r.json().get("data", {})
+    return data.get("token")
 
-# 请求 Keep 运动数据
-res = requests.get("https://api.gotokeep.com/pd/v3/stats/detail", params={
-    "dateUnit": "all", "type": "", "lastDate": 0
-}, headers={"Authorization": f"Bearer {token}"})
-res.raise_for_status()  # 确保请求成功
-data = res.json().get("data", {}).get("records", [])
-print(f"\U0001f440 汇总所有类型后的记录条数： {len(data)}")
+def fetch_keep_data(token):
+    r = requests.get(
+        "https://api.gotokeep.com/pd/v3/stats/detail",
+        params={"dateUnit": "all", "type": "", "lastDate": 0},
+        headers={"Authorization": f"Bearer {token}"}
+    )
+    r.raise_for_status()
+    return r.json().get("data", {}).get("records", [])
 
-# 天气信息获取函数
-def get_weather(city_id):
-    weather_url = f"http://api.openweathermap.org/data/2.5/weather?id={city_id}&appid={OPENWEATHER_API_KEY}&units=metric&lang=zh_cn"
-    headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
-    }
-    print(f"Weather API URL: {weather_url}")  # 调试 URL
+def get_weather(city_id, api_key):
+    url = f"http://api.openweathermap.org/data/2.5/weather?id={city_id}&appid={api_key}&units=metric&lang=zh_cn"
     try:
-        response = requests.get(weather_url, headers=headers)
-        response.raise_for_status()  # 确保请求成功
-        weather_data = response.json()
-        if weather_data.get("cod") == 200:
-            temperature = weather_data["main"]["temp"]
-            description = weather_data["weather"][0]["description"]
-            return f"{description} ~ {temperature}°C"
-        else:
-            return f"天气请求失败: {weather_data.get('message', '未知错误')}"
-    except requests.exceptions.RequestException as e:
-        print(f"天气请求失败: {e}")
+        resp = requests.get(url)
+        resp.raise_for_status()
+        wdata = resp.json()
+        if wdata.get("cod") == 200:
+            desc = wdata["weather"][0]["description"]
+            temp = wdata["main"]["temp"]
+            return f"{desc} ~ {temp}°C"
+        return f"天气请求失败: {wdata.get('message','未知错误')}"
+    except:
         return "无法获取天气信息"
 
-# 判断是否已经同步过此记录
-def page_exists(done_date, workout_id):
-    query = notion.databases.query(
-        **{
-            "database_id": NOTION_DATABASE_ID,
-            "filter": {
-                "and": [
-                    {"property": "日期", "date": {"equals": done_date}},
-                    {"property": "类型", "rich_text": {"contains": workout_id}}
-                ]
-            }
+def page_exists(notion_client, database_id, date_str, workout_id):
+    query_res = notion_client.databases.query(
+        database_id=database_id,
+        filter={
+            "and": [
+                {"property": "日期", "date": {"equals": date_str}},
+                {"property": "类型", "rich_text": {"contains": workout_id}}
+            ]
         }
     )
-    return len(query.get("results", [])) > 0
+    return len(query_res.get("results", [])) > 0
 
-# 运动记录同步
-for group in data:
-    logs = group.get("logs", [])
-    for item in logs:
-        stats = item.get("stats")
-        if not stats:
-            continue
-        done_date = stats.get("doneDate", "")
-        sport_type = stats.get("type", "unknown")
-        workout_id = stats.get("id", "")
-        km = stats.get("kmDistance", 0.0)
+def create_notion_page(properties):
+    return notion.pages.create(
+        parent={"database_id": NOTION_DATABASE_ID},
+        properties=properties
+    )
 
-        print(f"\U0001f4c5 当前处理日期: {done_date}, 类型: {sport_type}, 距离: {km}")
-
-        if page_exists(done_date, workout_id):
-            continue
-
-        # 获取天气信息
-        weather_info = get_weather(CITY_ID)
-        print(f"Weather for {done_date}: {weather_info}")
-
-        # 创建页面标题
-        title = f"🏃‍♂️ {stats.get('name', '未命名')} {stats.get('nameSuffix', '')}"
-        duration = stats.get("duration", 0)
-        pace_seconds = int(duration / km) if km > 0 else 0
-        hr = stats.get("heartRate")
-        avg_hr = hr.get("averageHeartRate", 0) if isinstance(hr, dict) else 0
-        vendor = stats.get("vendor", {})
-        source = vendor.get("source", "Keep")
-        device = vendor.get("deviceModel", "")
-        vendor_display = f"{source} {device}".strip()
-
-        try:
-            # 向 Notion 添加数据
-            notion.pages.create(
-                parent={"database_id": NOTION_DATABASE_ID},
-                properties={
-                    "名称": {"title": [{"text": {"content": title}}]},
-                    "日期": {"date": {"start": done_date}},
-                    "时长": {"number": duration},
-                    "距离": {"number": km},
-                    "卡路里": {"number": stats.get("calorie")},
-                    "类型": {"rich_text": [{"text": {"content": workout_id}}]},
-                    "平均配速": {"number": pace_seconds},
-                    "平均心率": {"number": avg_hr},
-                    "天气": {"rich_text": [{"text": {"content": weather_info}}] if weather_info else []},
-                    "数据来源": {"rich_text": [{"text": {"content": vendor_display}}]}
+def append_image_block(page_id, image_url):
+    notion.blocks.children.append(
+        block_id=page_id,
+        children=[
+            {
+                "object": "block",
+                "type": "image",
+                "image": {
+                    "type": "external",
+                    "external": {
+                        "url": image_url
+                    }
                 }
-            )
-            print(f"\u2705 已同步: {done_date} - {title}")
-        except Exception as e:
-            print(f"\U0001f6ab 同步失败: {done_date} - {title}, 错误: {str(e)}")
+            }
+        ]
+    )
 
-print("\u2705 已完成所有 Notion 同步")
+def generate_run_map_url(coords):
+    if not AMAP_KEY or not coords:
+        return ""
+    point_list = []
+    for (lat, lng) in coords:
+        # 高德静态地图坐标顺序：lng,lat
+        point_list.append(f"{lng},{lat}")
+    path_str = ";".join(point_list)
+    base_url = "https://restapi.amap.com/v3/staticmap"
+    params = {
+        "key": AMAP_KEY,
+        "size": "1024*512",
+        "paths": f"2,0xFF0000,1,,:{path_str}"
+    }
+    req = requests.Request("GET", base_url, params=params).prepare()
+    return req.url
+
+def main():
+    token = login_keep(KEEP_MOBILE, KEEP_PASSWORD)
+    if not token:
+        print("获取 Keep token 失败，请确认 Keep 账号密码是否正确。")
+        return
+
+    records = fetch_keep_data(token)
+    print(f"共获取到 {len(records)} 组运动记录")
+
+    for group in records:
+        logs = group.get("logs", [])
+        for item in logs:
+            stats = item.get("stats") or {}
+            if not stats:
+                continue
+
+            done_date = stats.get("doneDate", "")
+            workout_id = stats.get("id", "")
+            sport_type = stats.get("type", "").lower()
+            if page_exists(notion, NOTION_DATABASE_ID, done_date, workout_id):
+                continue
+
+            km = stats.get("kmDistance", 0.0)
+            duration = stats.get("duration", 0)
+            calorie = stats.get("calorie", 0)
+            name = stats.get("name", "未命名")
+            name_suffix = stats.get("nameSuffix", "")
+            heart_rate_data = stats.get("heartRate", {})
+            avg_hr = heart_rate_data.get("averageHeartRate", 0) if isinstance(heart_rate_data, dict) else 0
+
+            weather_info = get_weather(CITY_ID, OPENWEATHER_API_KEY)
+            pace_seconds = int(duration / km) if km > 0 else 0
+            vendor = stats.get("vendor", {})
+            source = vendor.get("source", "Keep")
+            device_model = vendor.get("deviceModel", "")
+            vendor_str = (source + " " + device_model).strip()
+            title = f"🏃‍♂️ {name} {name_suffix}"
+
+            gps_points = stats.get("gpsData", [])
+            coords = []
+            for p in gps_points:
+                lat = p.get("lat")
+                lng = p.get("lng")
+                if lat and lng:
+                    coords.append((lat, lng))
+
+            track_url = ""
+            if sport_type in ["running", "jogging"] and coords:
+                track_url = generate_run_map_url(coords)
+
+            props = {
+                "名称": {"title": [{"text": {"content": title}}]},
+                "日期": {"date": {"start": done_date}},
+                "时长": {"number": duration},
+                "距离": {"number": km},
+                "卡路里": {"number": calorie},
+                "类型": {"rich_text": [{"text": {"content": workout_id}}]},
+                "平均配速": {"number": pace_seconds},
+                "平均心率": {"number": avg_hr},
+                "天气": {"rich_text": [{"text": {"content": weather_info}}]},
+                "数据来源": {"rich_text": [{"text": {"content": vendor_str}}]}
+            }
+
+            # 如果想在数据库属性中也记录轨迹图链接，须在 Notion 里建好同名字段，如 URL 类型
+            if track_url:
+                props["轨迹图"] = {"url": track_url}
+
+            try:
+                new_page = create_notion_page(props)
+                print(f"已创建页面: {done_date} - {title}")
+            except Exception as e:
+                print(f"创建页面失败: {done_date} - {title} -> {e}")
+                continue
+
+            page_id = new_page["id"]
+
+            # 插入跑步轨迹图
+            if track_url:
+                try:
+                    append_image_block(page_id, track_url)
+                    print("已插入跑步轨迹图")
+                except Exception as e:
+                    print(f"插入跑步轨迹图失败: {e}")
+
+            # 如果是步行且有步频图（此字段仅举例，需查看 Keep 是否返回类似字段）
+            step_freq_chart_url = stats.get("stepFreqChart", "")
+            if sport_type == "walking" and step_freq_chart_url:
+                try:
+                    append_image_block(page_id, step_freq_chart_url)
+                    print("已插入步频图")
+                except Exception as e:
+                    print(f"插入步频图失败: {e}")
+
+if __name__ == "__main__":
+    main()
