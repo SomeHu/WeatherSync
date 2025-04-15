@@ -2,7 +2,6 @@ import os
 import requests
 from notion_client import Client
 from dotenv import load_dotenv
-from urllib.parse import quote
 
 # 加载环境变量
 load_dotenv()
@@ -13,7 +12,6 @@ KEEP_MOBILE = os.getenv("KEEP_MOBILE")
 KEEP_PASSWORD = os.getenv("KEEP_PASSWORD")
 OPENWEATHER_API_KEY = os.getenv("OPENWEATHER_API_KEY")
 CITY_ID = os.getenv("CITY_ID", "1798082")
-AMAP_KEY = os.getenv("AMAP_KEY")
 
 # 校验环境变量
 if not all([NOTION_TOKEN, NOTION_DATABASE_ID, KEEP_MOBILE, KEEP_PASSWORD, OPENWEATHER_API_KEY]):
@@ -24,22 +22,36 @@ if not all([NOTION_TOKEN, NOTION_DATABASE_ID, KEEP_MOBILE, KEEP_PASSWORD, OPENWE
 notion = Client(auth=NOTION_TOKEN)
 
 def login_keep(mobile, password):
-    r = requests.post(
-        "https://api.gotokeep.com/v1.1/users/login",
-        json={"mobile": mobile, "password": password}
-    )
-    r.raise_for_status()
-    data = r.json().get("data", {})
-    return data.get("token")
+    try:
+        r = requests.post(
+            "https://api.gotokeep.com/v1.1/users/login",
+            json={"mobile": mobile, "password": password}
+        )
+        r.raise_for_status()
+        data = r.json().get("data", {})
+        token = data.get("token")
+        if not token:
+            print("登录失败：未获取到 Keep token。")
+        return token
+    except Exception as e:
+        print(f"登录 Keep 失败：{e}")
+        return None
 
 def fetch_keep_data(token):
-    r = requests.get(
-        "https://api.gotokeep.com/pd/v3/stats/detail",
-        params={"dateUnit": "all", "type": "", "lastDate": 0},
-        headers={"Authorization": f"Bearer {token}"}
-    )
-    r.raise_for_status()
-    return r.json().get("data", {}).get("records", [])
+    try:
+        r = requests.get(
+            "https://api.gotokeep.com/pd/v3/stats/detail",
+            params={"dateUnit": "all", "type": "", "lastDate": 0},
+            headers={"Authorization": f"Bearer {token}"}
+        )
+        r.raise_for_status()
+        data = r.json().get("data", {})
+        records = data.get("records", [])
+        print(f"获取到 {len(records)} 组运动记录")
+        return records
+    except Exception as e:
+        print(f"获取 Keep 数据失败：{e}")
+        return []
 
 def get_weather(city_id, api_key):
     url = f"http://api.openweathermap.org/data/2.5/weather?id={city_id}&appid={api_key}&units=metric&lang=zh_cn"
@@ -52,20 +64,28 @@ def get_weather(city_id, api_key):
             temp = wdata["main"]["temp"]
             return f"{desc} ~ {temp}°C"
         return f"天气请求失败: {wdata.get('message','未知错误')}"
-    except:
+    except Exception as e:
+        print(f"获取天气信息失败：{e}")
         return "无法获取天气信息"
 
 def page_exists(notion_client, database_id, date_str, workout_id):
-    query_res = notion_client.databases.query(
-        database_id=database_id,
-        filter={
-            "and": [
-                {"property": "日期", "date": {"equals": date_str}},
-                {"property": "类型", "rich_text": {"contains": workout_id}}
-            ]
-        }
-    )
-    return len(query_res.get("results", [])) > 0
+    try:
+        query_res = notion_client.databases.query(
+            database_id=database_id,
+            filter={
+                "and": [
+                    {"property": "日期", "date": {"equals": date_str}},
+                    {"property": "类型", "rich_text": {"contains": workout_id}}
+                ]
+            }
+        )
+        exists = len(query_res.get("results", [])) > 0
+        if exists:
+            print(f"页面已存在：{date_str} - {workout_id}")
+        return exists
+    except Exception as e:
+        print(f"检查页面存在失败：{e}")
+        return False
 
 def create_notion_page(properties, cover_url=None):
     notion_page_data = {
@@ -73,62 +93,41 @@ def create_notion_page(properties, cover_url=None):
         "properties": properties
     }
     if cover_url:
+        print(f"设置封面 URL：{cover_url}")
         notion_page_data["cover"] = {
             "type": "external",
             "external": {"url": cover_url}
         }
-    return notion.pages.create(**notion_page_data)
-
-def append_image_block(page_id, image_url):
-    notion.blocks.children.append(
-        block_id=page_id,
-        children=[
-            {
-                "object": "block",
-                "type": "image",
-                "image": {
-                    "type": "external",
-                    "external": {"url": image_url}
-                }
-            }
-        ]
-    )
-
-def generate_run_map_url(coords):
-    if not AMAP_KEY or not coords:
-        return ""
-    point_list = []
-    for (lat, lng) in coords:
-        point_list.append(f"{lng},{lat}")
-    path_str = ";".join(point_list)
-    base_url = "https://restapi.amap.com/v3/staticmap"
-    params = {
-        "key": AMAP_KEY,
-        "size": "1024*512",
-        "paths": f"2,0xFF0000,1,,:{path_str}"
-    }
-    req = requests.Request("GET", base_url, params=params).prepare()
-    return req.url
+    try:
+        page = notion.pages.create(**notion_page_data)
+        print("页面创建成功")
+        return page
+    except Exception as e:
+        print(f"创建 Notion 页面失败：{e}")
+        return None
 
 def main():
     token = login_keep(KEEP_MOBILE, KEEP_PASSWORD)
     if not token:
-        print("获取 Keep token 失败，请确认 Keep 账号密码是否正确。")
         return
 
     records = fetch_keep_data(token)
-    print(f"共获取到 {len(records)} 组运动记录")
+    if not records:
+        return
 
     for group in records:
         logs = group.get("logs", [])
         for item in logs:
             stats = item.get("stats") or {}
             if not stats:
+                print("跳过：无 stats 数据")
                 continue
 
             done_date = stats.get("doneDate", "")
             workout_id = stats.get("id", "")
             sport_type = stats.get("type", "").lower()
+            print(f"处理记录：{done_date} - {sport_type} - {workout_id}")
+
             if page_exists(notion, NOTION_DATABASE_ID, done_date, workout_id):
                 continue
 
@@ -148,16 +147,29 @@ def main():
             vendor_str = f"{source} {device_model}".strip()
             title = f"🏃‍♂️ {name} {name_suffix}"
 
-            gps_points = stats.get("gpsData", [])
-            coords = [(p.get("lat"), p.get("lng")) for p in gps_points if p.get("lat") and p.get("lng")]
+            # 获取 Keep 自带的轨迹图 URL（字段名需确认）
+            track_url = stats.get("mapUrl", "")  # 替换为实际字段名
+            if sport_type in ["running", "jogging"]:
+                if track_url:
+                    print(f"找到轨迹图 URL：{track_url}")
+                    # 验证 URL 是否有效
+                    try:
+                        resp = requests.head(track_url, timeout=5)
+                        if resp.status_code != 200:
+                            print(f"轨迹图 URL 无效，状态码：{resp.status_code}")
+                            track_url = ""
+                    except Exception as e:
+                        print(f"验证轨迹图 URL 失败：{e}")
+                        track_url = ""
+                else:
+                    print("未找到轨迹图 URL")
+            else:
+                print(f"跳过轨迹图：运动类型为 {sport_type}")
+                track_url = ""
 
-            track_url = ""
-            if sport_type in ["running", "jogging"] and coords:
-                track_url = generate_run_map_url(coords)
-
-            # 假设步行活动可能有其他可视化图（需确认 Keep API 实际字段）
-            chart_url = stats.get("stepFreqChart", "")  # 替换为实际字段名，如有
-            cover_url = track_url if track_url else chart_url if sport_type == "walking" else ""
+            # 步频图（占位，需确认字段）
+            chart_url = stats.get("stepFreqChart", "") if sport_type == "walking" else ""
+            cover_url = track_url or chart_url
 
             props = {
                 "名称": {"title": [{"text": {"content": title}}]},
@@ -175,22 +187,11 @@ def main():
             if track_url:
                 props["轨迹图"] = {"url": track_url}
 
-            try:
-                new_page = create_notion_page(props, cover_url=cover_url)
-                print(f"已创建页面: {done_date} - {title}")
-            except Exception as e:
-                print(f"创建页面失败: {done_date} - {title} -> {e}")
-                continue
-
-            page_id = new_page["id"]
-
-            # 可选：如果需要图片同时出现在页面内容中，取消注释
-            # if cover_url:
-            #     try:
-            #         append_image_block(page_id, cover_url)
-            #         print(f"已插入图片到页面内容: {'轨迹图' if track_url else '步频图'}")
-            #     except Exception as e:
-            #         print(f"插入图片失败: {e}")
+            new_page = create_notion_page(props, cover_url=cover_url)
+            if new_page:
+                print(f"成功创建页面：{done_date} - {title}")
+            else:
+                print(f"页面创建失败：{done_date} - {title}")
 
 if __name__ == "__main__":
     main()
