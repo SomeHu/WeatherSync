@@ -13,7 +13,7 @@ KEEP_MOBILE = os.getenv("KEEP_MOBILE")
 KEEP_PASSWORD = os.getenv("KEEP_PASSWORD")
 OPENWEATHER_API_KEY = os.getenv("OPENWEATHER_API_KEY")
 CITY_ID = os.getenv("CITY_ID", "1798082")
-AMAP_KEY = os.getenv("AMAP_KEY")  # 高德地图 Key，用于生成跑步轨迹图
+AMAP_KEY = os.getenv("AMAP_KEY")
 
 # 校验环境变量
 if not all([NOTION_TOKEN, NOTION_DATABASE_ID, KEEP_MOBILE, KEEP_PASSWORD, OPENWEATHER_API_KEY]):
@@ -68,7 +68,6 @@ def page_exists(notion_client, database_id, date_str, workout_id):
     return len(query_res.get("results", [])) > 0
 
 def create_notion_page(properties, cover_url=None):
-    # 如果有封面图，添加封面
     notion_page_data = {
         "parent": {"database_id": NOTION_DATABASE_ID},
         "properties": properties
@@ -76,11 +75,8 @@ def create_notion_page(properties, cover_url=None):
     if cover_url:
         notion_page_data["cover"] = {
             "type": "external",
-            "external": {
-                "url": cover_url
-            }
+            "external": {"url": cover_url}
         }
-    
     return notion.pages.create(**notion_page_data)
 
 def append_image_block(page_id, image_url):
@@ -92,9 +88,7 @@ def append_image_block(page_id, image_url):
                 "type": "image",
                 "image": {
                     "type": "external",
-                    "external": {
-                        "url": image_url
-                    }
+                    "external": {"url": image_url}
                 }
             }
         ]
@@ -105,7 +99,6 @@ def generate_run_map_url(coords):
         return ""
     point_list = []
     for (lat, lng) in coords:
-        # 高德静态地图坐标顺序：lng,lat
         point_list.append(f"{lng},{lat}")
     path_str = ";".join(point_list)
     base_url = "https://restapi.amap.com/v3/staticmap"
@@ -156,16 +149,15 @@ def main():
             title = f"🏃‍♂️ {name} {name_suffix}"
 
             gps_points = stats.get("gpsData", [])
-            coords = []
-            for p in gps_points:
-                lat = p.get("lat")
-                lng = p.get("lng")
-                if lat and lng:
-                    coords.append((lat, lng))
+            coords = [(p.get("lat"), p.get("lng")) for p in gps_points if p.get("lat") and p.get("lng")]
 
             track_url = ""
             if sport_type in ["running", "jogging"] and coords:
                 track_url = generate_run_map_url(coords)
+
+            # 假设步行活动可能有其他可视化图（需确认 Keep API 实际字段）
+            chart_url = stats.get("stepFreqChart", "")  # 替换为实际字段名，如有
+            cover_url = track_url if track_url else chart_url if sport_type == "walking" else ""
 
             props = {
                 "名称": {"title": [{"text": {"content": title}}]},
@@ -180,13 +172,11 @@ def main():
                 "数据来源": {"rich_text": [{"text": {"content": vendor_str}}]}
             }
 
-            # 如果想在数据库属性中也记录轨迹图链接，须在 Notion 里建好同名字段，如 URL 类型
             if track_url:
                 props["轨迹图"] = {"url": track_url}
 
             try:
-                # 将轨迹图设置为封面
-                new_page = create_notion_page(props, cover_url=track_url)
+                new_page = create_notion_page(props, cover_url=cover_url)
                 print(f"已创建页面: {done_date} - {title}")
             except Exception as e:
                 print(f"创建页面失败: {done_date} - {title} -> {e}")
@@ -194,22 +184,13 @@ def main():
 
             page_id = new_page["id"]
 
-            # 插入跑步轨迹图
-            if track_url:
-                try:
-                    append_image_block(page_id, track_url)
-                    print("已插入跑步轨迹图")
-                except Exception as e:
-                    print(f"插入跑步轨迹图失败: {e}")
-
-            # 如果是步行且有步频图（此字段仅举例，需查看 Keep 是否返回类似字段）
-            step_freq_chart_url = stats.get("stepFreqChart", "")
-            if sport_type == "walking" and step_freq_chart_url:
-                try:
-                    append_image_block(page_id, step_freq_chart_url)
-                    print("已插入步频图")
-                except Exception as e:
-                    print(f"插入步频图失败: {e}")
+            # 可选：如果需要图片同时出现在页面内容中，取消注释
+            # if cover_url:
+            #     try:
+            #         append_image_block(page_id, cover_url)
+            #         print(f"已插入图片到页面内容: {'轨迹图' if track_url else '步频图'}")
+            #     except Exception as e:
+            #         print(f"插入图片失败: {e}")
 
 if __name__ == "__main__":
     main()
