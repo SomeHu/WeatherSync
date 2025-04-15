@@ -198,23 +198,26 @@ def main():
             track_url = ""
             if sport_type in ["running", "jogging"]:
                 track_url = detail_data.get("shareImg", "") or stats.get("trackWaterMark", "")
+                print(f"轨迹图 URL: {track_url}")  # 打印出来看是否正常
+
                 if track_url:
-                    print(f"找到轨迹图 URL：{track_url}")
                     try:
                         resp = requests.head(track_url, headers=keep_headers, timeout=5)
                         if resp.status_code != 200:
                             print(f"轨迹图 URL 无效，状态码：{resp.status_code}")
-                            track_url = ""
-                        else:
-                            print("轨迹图 URL 有效")
+                            track_url = ""  # 如果无效就清空 URL
                     except Exception as e:
                         print(f"验证轨迹图 URL 失败：{e}")
-                        track_url = ""
+                        track_url = ""  # 如果请求失败，也清空 URL
                 else:
-                    print("未找到任何轨迹图 URL")
+                    print("没有轨迹图 URL")
+                    track_url = ""  # 没有轨迹图时，清空 URL
             else:
                 print(f"跳过轨迹图：运动类型为 {sport_type}")
                 track_url = ""
+
+            if not track_url:
+                track_url = "https://example.com/default_cover_image.jpg"  # 设置默认封面图 URL
 
             props = {
                 "名称": {"title": [{"text": {"content": title}}]},
