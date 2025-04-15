@@ -126,10 +126,13 @@ def main():
             done_date = stats.get("doneDate", "")
             workout_id = stats.get("id", "")
             sport_type = stats.get("type", "").lower()
-            print(f"处理记录：{done_date} - {sport_type} - {workout_id}")
+            print(f"\n处理记录：{done_date} - {sport_type} - {workout_id}")
 
             if page_exists(notion, NOTION_DATABASE_ID, done_date, workout_id):
                 continue
+
+            # 打印 stats 字段名以调试轨迹图字段
+            print(f"stats 字段名：{list(stats.keys())}")
 
             km = stats.get("kmDistance", 0.0)
             duration = stats.get("duration", 0)
@@ -147,29 +150,32 @@ def main():
             vendor_str = f"{source} {device_model}".strip()
             title = f"🏃‍♂️ {name} {name_suffix}"
 
-            # 获取 Keep 自带的轨迹图 URL（字段名需确认）
-            track_url = stats.get("mapUrl", "")  # 替换为实际字段名
+            # 尝试多个可能的轨迹图字段名
+            possible_map_fields = ["mapUrl", "mapImage", "trackMapUrl", "routeImage", "mapSnapshot"]
+            track_url = ""
             if sport_type in ["running", "jogging"]:
+                for field in possible_map_fields:
+                    track_url = stats.get(field, "")
+                    if track_url:
+                        print(f"找到轨迹图字段 '{field}'：{track_url}")
+                        break
                 if track_url:
-                    print(f"找到轨迹图 URL：{track_url}")
                     # 验证 URL 是否有效
                     try:
                         resp = requests.head(track_url, timeout=5)
                         if resp.status_code != 200:
                             print(f"轨迹图 URL 无效，状态码：{resp.status_code}")
                             track_url = ""
+                        else:
+                            print("轨迹图 URL 有效")
                     except Exception as e:
                         print(f"验证轨迹图 URL 失败：{e}")
                         track_url = ""
                 else:
-                    print("未找到轨迹图 URL")
+                    print("未找到任何轨迹图字段")
             else:
                 print(f"跳过轨迹图：运动类型为 {sport_type}")
                 track_url = ""
-
-            # 步频图（占位，需确认字段）
-            chart_url = stats.get("stepFreqChart", "") if sport_type == "walking" else ""
-            cover_url = track_url or chart_url
 
             props = {
                 "名称": {"title": [{"text": {"content": title}}]},
@@ -187,7 +193,7 @@ def main():
             if track_url:
                 props["轨迹图"] = {"url": track_url}
 
-            new_page = create_notion_page(props, cover_url=cover_url)
+            new_page = create_notion_page(props, cover_url=track_url)
             if new_page:
                 print(f"成功创建页面：{done_date} - {title}")
             else:
