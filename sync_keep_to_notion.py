@@ -2,6 +2,8 @@ import os
 import requests
 from notion_client import Client
 from dotenv import load_dotenv
+import pendulum
+import logging
 
 # 加载环境变量
 load_dotenv()
@@ -19,12 +21,23 @@ if not all([NOTION_TOKEN, NOTION_DATABASE_ID, KEEP_MOBILE, KEEP_PASSWORD, OPENWE
     exit(1)
 
 # 初始化 Notion 客户端
-notion = Client(auth=NOTION_TOKEN)
+notion = Client(auth=NOTION_TOKEN, log_level=logging.ERROR)
+
+# Keep API 配置
+LOGIN_API = "https://api.gotokeep.com/v1.1/users/login"
+DATA_API = "https://api.gotokeep.com/pd/v3/stats/detail?dateUnit=all&type=&lastDate=0"
+LOG_API = "https://api.gotokeep.com/pd/v3/{type}log/{id}"
+
+keep_headers = {
+    "User-Agent": "Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:78.0) Gecko/20100101 Firefox/78.0",
+    "Content-Type": "application/x-www-form-urlencoded;charset=utf-8",
+}
 
 def login_keep(mobile, password):
     try:
         r = requests.post(
-            "https://api.gotokeep.com/v1.1/users/login",
+            LOGIN_API,
+            headers=keep_headers,
             json={"mobile": mobile, "password": password}
         )
         r.raise_for_status()
@@ -32,6 +45,7 @@ def login_keep(mobile, password):
         token = data.get("token")
         if not token:
             print("登录失败：未获取到 Keep token。")
+        keep_headers["Authorization"] = f"Bearer {token}"
         return token
     except Exception as e:
         print(f"登录 Keep 失败：{e}")
@@ -40,9 +54,8 @@ def login_keep(mobile, password):
 def fetch_keep_data(token):
     try:
         r = requests.get(
-            "https://api.gotokeep.com/pd/v3/stats/detail",
-            params={"dateUnit": "all", "type": "", "lastDate": 0},
-            headers={"Authorization": f"Bearer {token}"}
+            DATA_API,
+            headers=keep_headers
         )
         r.raise_for_status()
         data = r.json().get("data", {})
@@ -52,6 +65,19 @@ def fetch_keep_data(token):
     except Exception as e:
         print(f"获取 Keep 数据失败：{e}")
         return []
+
+def get_run_data(log_type, log_id):
+    try:
+        r = requests.get(
+            LOG_API.format(type=log_type, id=log_id),
+            headers=keep_headers
+        )
+        r.raise_for_status()
+        data = r.json().get("data", {})
+        return data
+    except Exception as e:
+        print(f"获取跑步数据详情失败 ({log_id})：{e}")
+        return {}
 
 def get_weather(city_id, api_key):
     url = f"http://api.openweathermap.org/data/2.5/weather?id={city_id}&appid={api_key}&units=metric&lang=zh_cn"
@@ -87,17 +113,44 @@ def page_exists(notion_client, database_id, date_str, workout_id):
         print(f"检查页面存在失败：{e}")
         return False
 
+def download_and_upload_cover(cover_url):
+    """
+    下载图片并上传到 Notion（替代方案）
+    注意：Notion API 不直接支持上传文件，此处仅下载图片，需手动实现上传
+    """
+    try:
+        # 下载图片
+        resp = requests.get(cover_url, headers=keep_headers, stream=True)
+        resp.raise_for_status()
+        # 保存到本地（临时方案）
+        with open("temp_cover.jpg", "wb") as f:
+            for chunk in resp.iter_content(chunk_size=8192):
+                f.write(chunk)
+        print("图片下载成功：temp_cover.jpg")
+        # TODO: 实现图片上传（例如使用第三方服务如 Imgur）
+        # 这里需要返回一个可公开访问的 URL
+        # 临时返回原 URL，需替换为上传后的 URL
+        return cover_url
+    except Exception as e:
+        print(f"下载封面图片失败：{e}")
+        return ""
+
 def create_notion_page(properties, cover_url=None):
     notion_page_data = {
         "parent": {"database_id": NOTION_DATABASE_ID},
         "properties": properties
     }
     if cover_url:
-        print(f"设置封面 URL：{cover_url}")
-        notion_page_data["cover"] = {
-            "type": "external",
-            "external": {"url": cover_url}
-        }
+        # Notion 对外部 URL 长度有限制，检查长度
+        if len(cover_url) > 2000:
+            print(f"封面 URL 过长 ({len(cover_url)} 字符)，尝试下载并上传")
+            cover_url = download_and_upload_cover(cover_url)
+        if cover_url:
+            print(f"设置封面 URL：{cover_url}")
+            notion_page_data["cover"] = {
+                "type": "external",
+                "external": {"url": cover_url}
+            }
     try:
         page = notion.pages.create(**notion_page_data)
         print("页面创建成功")
@@ -131,8 +184,10 @@ def main():
             if page_exists(notion, NOTION_DATABASE_ID, done_date, workout_id):
                 continue
 
-            # 打印 stats 字段名以调试轨迹图字段
-            print(f"stats 字段名：{list(stats.keys())}")
+            # 获取详细数据
+            detail_data = get_run_data(item.get("type", "stats"), workout_id)
+            if not detail_data:
+                continue
 
             km = stats.get("kmDistance", 0.0)
             duration = stats.get("duration", 0)
@@ -150,19 +205,19 @@ def main():
             vendor_str = f"{source} {device_model}".strip()
             title = f"🏃‍♂️ {name} {name_suffix}"
 
-            # 尝试多个可能的轨迹图字段名
-            possible_map_fields = ["mapUrl", "mapImage", "trackMapUrl", "routeImage", "mapSnapshot"]
+            # 获取轨迹图
             track_url = ""
             if sport_type in ["running", "jogging"]:
-                for field in possible_map_fields:
-                    track_url = stats.get(field, "")
-                    if track_url:
-                        print(f"找到轨迹图字段 '{field}'：{track_url}")
-                        break
+                # 优先使用 shareImg（从详细数据获取）
+                track_url = detail_data.get("shareImg", "")
+                if not track_url:
+                    # 回退到 trackWaterMark
+                    track_url = stats.get("trackWaterMark", "")
                 if track_url:
+                    print(f"找到轨迹图 URL：{track_url}")
                     # 验证 URL 是否有效
                     try:
-                        resp = requests.head(track_url, timeout=5)
+                        resp = requests.head(track_url, headers=keep_headers, timeout=5)
                         if resp.status_code != 200:
                             print(f"轨迹图 URL 无效，状态码：{resp.status_code}")
                             track_url = ""
@@ -172,7 +227,7 @@ def main():
                         print(f"验证轨迹图 URL 失败：{e}")
                         track_url = ""
                 else:
-                    print("未找到任何轨迹图字段")
+                    print("未找到任何轨迹图 URL")
             else:
                 print(f"跳过轨迹图：运动类型为 {sport_type}")
                 track_url = ""
