@@ -67,11 +67,21 @@ def page_exists(notion_client, database_id, date_str, workout_id):
     )
     return len(query_res.get("results", [])) > 0
 
-def create_notion_page(properties):
-    return notion.pages.create(
-        parent={"database_id": NOTION_DATABASE_ID},
-        properties=properties
-    )
+def create_notion_page(properties, cover_url=None):
+    # 如果有封面图，添加封面
+    notion_page_data = {
+        "parent": {"database_id": NOTION_DATABASE_ID},
+        "properties": properties
+    }
+    if cover_url:
+        notion_page_data["cover"] = {
+            "type": "external",
+            "external": {
+                "url": cover_url
+            }
+        }
+    
+    return notion.pages.create(**notion_page_data)
 
 def append_image_block(page_id, image_url):
     notion.blocks.children.append(
@@ -175,7 +185,8 @@ def main():
                 props["轨迹图"] = {"url": track_url}
 
             try:
-                new_page = create_notion_page(props)
+                # 将轨迹图设置为封面
+                new_page = create_notion_page(props, cover_url=track_url)
                 print(f"已创建页面: {done_date} - {title}")
             except Exception as e:
                 print(f"创建页面失败: {done_date} - {title} -> {e}")
