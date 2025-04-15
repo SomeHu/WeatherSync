@@ -2,7 +2,6 @@ import os
 import requests
 from notion_client import Client
 from dotenv import load_dotenv
-import pendulum
 import logging
 
 # 加载环境变量
@@ -30,10 +29,11 @@ LOG_API = "https://api.gotokeep.com/pd/v3/{type}log/{id}"
 
 keep_headers = {
     "User-Agent": "Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:78.0) Gecko/20100101 Firefox/78.0",
-    "Content-Type": "application/x-www-form-urlencoded;charset=utf-8",
+    "Content-Type": "application/json",  # 修改为 application/json
 }
 
 def login_keep(mobile, password):
+    print(f"登录 Keep - mobile: {mobile}, password: {password}")
     try:
         r = requests.post(
             LOGIN_API,
@@ -49,6 +49,7 @@ def login_keep(mobile, password):
         return token
     except Exception as e:
         print(f"登录 Keep 失败：{e}")
+        print(f"响应内容：{r.text}")
         return None
 
 def fetch_keep_data(token):
@@ -114,25 +115,16 @@ def page_exists(notion_client, database_id, date_str, workout_id):
         return False
 
 def download_and_upload_cover(cover_url):
-    """
-    下载图片并上传到 Notion（替代方案）
-    注意：Notion API 不直接支持上传文件，此处仅下载图片，需手动实现上传
-    """
     try:
-        # 下载图片
         resp = requests.get(cover_url, headers=keep_headers, stream=True)
         resp.raise_for_status()
-        # 保存到本地（临时方案）
         with open("temp_cover.jpg", "wb") as f:
             for chunk in resp.iter_content(chunk_size=8192):
                 f.write(chunk)
         print("图片下载成功：temp_cover.jpg")
-        # TODO: 实现图片上传（例如使用第三方服务如 Imgur）
-        # 这里需要返回一个可公开访问的 URL
-        # 临时返回原 URL，需替换为上传后的 URL
-        return cover_url
+        return cover_url  # 临时返回原 URL
     except Exception as e:
-        print(f"下载封面图片失败：{e}")
+        print(f"处理封面图片失败：{e}")
         return ""
 
 def create_notion_page(properties, cover_url=None):
@@ -141,7 +133,6 @@ def create_notion_page(properties, cover_url=None):
         "properties": properties
     }
     if cover_url:
-        # Notion 对外部 URL 长度有限制，检查长度
         if len(cover_url) > 2000:
             print(f"封面 URL 过长 ({len(cover_url)} 字符)，尝试下载并上传")
             cover_url = download_and_upload_cover(cover_url)
@@ -184,7 +175,6 @@ def main():
             if page_exists(notion, NOTION_DATABASE_ID, done_date, workout_id):
                 continue
 
-            # 获取详细数据
             detail_data = get_run_data(item.get("type", "stats"), workout_id)
             if not detail_data:
                 continue
@@ -205,17 +195,11 @@ def main():
             vendor_str = f"{source} {device_model}".strip()
             title = f"🏃‍♂️ {name} {name_suffix}"
 
-            # 获取轨迹图
             track_url = ""
             if sport_type in ["running", "jogging"]:
-                # 优先使用 shareImg（从详细数据获取）
-                track_url = detail_data.get("shareImg", "")
-                if not track_url:
-                    # 回退到 trackWaterMark
-                    track_url = stats.get("trackWaterMark", "")
+                track_url = detail_data.get("shareImg", "") or stats.get("trackWaterMark", "")
                 if track_url:
                     print(f"找到轨迹图 URL：{track_url}")
-                    # 验证 URL 是否有效
                     try:
                         resp = requests.head(track_url, headers=keep_headers, timeout=5)
                         if resp.status_code != 200:
