@@ -150,6 +150,39 @@ def create_notion_page(properties, cover_url=None):
         print(f"创建 Notion 页面失败：{e}")
         return None
 
+def process_workout_data(log):
+    # 获取具体的运动数据
+    workout_data = get_run_data(log["type"], log["id"])
+    if workout_data:
+        # 检查轨迹图 URL 是否有效
+        track_url = workout_data.get("shareImg", "") or workout_data.get("trackWaterMark", "")
+        if not track_url:
+            track_url = "https://example.com/default_cover_image.jpg"  # 使用默认封面图
+        # 插入到 Notion 中
+        insert_workout_to_notion(workout_data, track_url)
+
+def insert_workout_to_notion(workout_data, cover_url):
+    # 准备插入 Notion 的数据
+    properties = {
+        "名称": {"title": [{"text": {"content": workout_data.get("name")}}]},
+        "日期": {"date": {"start": workout_data.get("doneDate")}},
+        "类型": {"rich_text": [{"text": {"content": workout_data.get("type")}}]},
+        "时长": {"number": workout_data.get("duration")},
+        "距离": {"number": workout_data.get("kmDistance")},
+        "卡路里": {"number": workout_data.get("calorie")}
+    }
+    # 插入封面图
+    notion_page_data = {
+        "parent": {"database_id": NOTION_DATABASE_ID},
+        "properties": properties,
+    }
+    if cover_url:
+        notion_page_data["cover"] = {
+            "type": "external",
+            "external": {"url": cover_url}
+        }
+    notion.pages.create(**notion_page_data)
+
 def main():
     token = login_keep(KEEP_MOBILE, KEEP_PASSWORD)
     if not token:
@@ -175,71 +208,7 @@ def main():
             if page_exists(notion, NOTION_DATABASE_ID, done_date, workout_id):
                 continue
 
-            detail_data = get_run_data(item.get("type", "stats"), workout_id)
-            if not detail_data:
-                continue
-
-            km = stats.get("kmDistance", 0.0)
-            duration = stats.get("duration", 0)
-            calorie = stats.get("calorie", 0)
-            name = stats.get("name", "未命名")
-            name_suffix = stats.get("nameSuffix", "")
-            heart_rate_data = stats.get("heartRate", {})
-            avg_hr = heart_rate_data.get("averageHeartRate", 0) if isinstance(heart_rate_data, dict) else 0
-
-            weather_info = get_weather(CITY_ID, OPENWEATHER_API_KEY)
-            pace_seconds = int(duration / km) if km > 0 else 0
-            vendor = stats.get("vendor", {})
-            source = vendor.get("source") or ""
-            device_model = vendor.get("deviceModel") or ""
-            vendor_str = f"{source} {device_model}".strip()
-            title = f"🏃‍♂️ {name} {name_suffix}"
-
-            track_url = ""
-            if sport_type in ["running", "jogging"]:
-                track_url = detail_data.get("shareImg", "") or stats.get("trackWaterMark", "")
-                print(f"轨迹图 URL: {track_url}")  # 打印出来看是否正常
-
-                if track_url:
-                    try:
-                        resp = requests.head(track_url, headers=keep_headers, timeout=5)
-                        if resp.status_code != 200:
-                            print(f"轨迹图 URL 无效，状态码：{resp.status_code}")
-                            track_url = ""  # 如果无效就清空 URL
-                    except Exception as e:
-                        print(f"验证轨迹图 URL 失败：{e}")
-                        track_url = ""  # 如果请求失败，也清空 URL
-                else:
-                    print("没有轨迹图 URL")
-                    track_url = ""  # 没有轨迹图时，清空 URL
-            else:
-                print(f"跳过轨迹图：运动类型为 {sport_type}")
-                track_url = ""
-
-            if not track_url:
-                track_url = "https://example.com/default_cover_image.jpg"  # 设置默认封面图 URL
-
-            props = {
-                "名称": {"title": [{"text": {"content": title}}]},
-                "日期": {"date": {"start": done_date}},
-                "时长": {"number": duration},
-                "距离": {"number": km},
-                "卡路里": {"number": calorie},
-                "类型": {"rich_text": [{"text": {"content": workout_id}}]},
-                "平均配速": {"number": pace_seconds},
-                "平均心率": {"number": avg_hr},
-                "天气": {"rich_text": [{"text": {"content": weather_info}}]},
-                "数据来源": {"rich_text": [{"text": {"content": vendor_str}}]}
-            }
-
-            if track_url:
-                props["轨迹图"] = {"url": track_url}
-
-            new_page = create_notion_page(props, cover_url=track_url)
-            if new_page:
-                print(f"成功创建页面：{done_date} - {title}")
-            else:
-                print(f"页面创建失败：{done_date} - {title}")
+            process_workout_data(item)  # 处理每一条运动记录
 
 if __name__ == "__main__":
     main()
