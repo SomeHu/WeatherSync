@@ -12,7 +12,7 @@ load_dotenv()
 NOTION_TOKEN = os.getenv("NOTION_TOKEN")
 NOTION_DATABASE_ID = os.getenv("NOTION_DATABASE_ID")
 OPENWEATHER_API_KEY = os.getenv("OPENWEATHER_API_KEY")
-CITY_ID = os.getenv("CITY_ID", "1808370")  # 默认城市：北京，城市 ID 可替换为你的城市 ID
+CITY_ID = os.getenv("CITY_ID", "1806691")  #衡阳市：1806691
 
 # 检查环境变量
 if not all([NOTION_TOKEN, NOTION_DATABASE_ID, OPENWEATHER_API_KEY]):
